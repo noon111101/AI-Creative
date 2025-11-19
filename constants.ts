@@ -1,5 +1,5 @@
 export const GEN_API_URL = '/backend/video_gen';
-export const STATUS_API_URL = '/backend/v2/recent_tasks';
+export const STATUS_API_URL = '/backend/recent_tasks';
 export const POLLING_INTERVAL_MS = 8000;
 export const MAX_POLLING_ATTEMPTS = 100;
 
