@@ -8,14 +8,16 @@ import { ApiResponse, BatchInputItem, PollingResult, ApiTokens } from '../types'
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const getHeaders = (tokens?: ApiTokens) => {
+// Modified getHeaders to optionally include/exclude sentinel token
+const getHeaders = (tokens?: ApiTokens, includeSentinel: boolean = true) => {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
   if (tokens?.authToken) {
     headers['authorization'] = `Bearer ${tokens.authToken}`;
   }
-  if (tokens?.sentinelToken) {
+  // Only add sentinel token if specifically requested (defaults to true)
+  if (includeSentinel && tokens?.sentinelToken) {
     headers['openai-sentinel-token'] = tokens.sentinelToken;
   }
   return headers;
@@ -23,12 +25,13 @@ const getHeaders = (tokens?: ApiTokens) => {
 
 /**
  * Sends the generation request to the backend
+ * Requires both Authorization and Sentinel Token
  */
 export const submitGenerationTask = async (payload: BatchInputItem, tokens?: ApiTokens): Promise<string> => {
   try {
     const response = await fetch(GEN_API_URL, {
       method: 'POST',
-      headers: getHeaders(tokens),
+      headers: getHeaders(tokens, true), // Include sentinel for generation
       body: JSON.stringify(payload),
     });
 
@@ -51,6 +54,7 @@ export const submitGenerationTask = async (payload: BatchInputItem, tokens?: Api
 
 /**
  * Polls the status of a specific task ID
+ * Requires ONLY Authorization, NO Sentinel Token
  */
 export const pollTaskUntilComplete = async (
   taskId: string, 
@@ -67,9 +71,10 @@ export const pollTaskUntilComplete = async (
 
     try {
       // Fetch recent tasks to find our specific task
-      const response = await fetch(`${STATUS_API_URL}?limit=5`, {
+      // Important: Do NOT send sentinel token here
+      const response = await fetch(`${STATUS_API_URL}?limit=10`, {
         method: 'GET',
-        headers: getHeaders(tokens)
+        headers: getHeaders(tokens, false) 
       });
 
       if (!response.ok) {
@@ -92,8 +97,6 @@ export const pollTaskUntilComplete = async (
         }
         // If still running/pending, loop continues
       } 
-      // If task not found in recent list, it might be too old or queue is weird. 
-      // We continue polling assuming it might appear or is still processing elsewhere.
       
     } catch (err: any) {
       console.error(`Polling exception for ${taskId}:`, err);

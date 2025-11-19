@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/backend/:match*",
-      "destination": "https://sora.com/backend/:match*"
+      "destination": "https://sora.chatgpt.com/backend/:match*"
     },
     {
       "source": "/(.*)",

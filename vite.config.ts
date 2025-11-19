@@ -9,7 +9,7 @@ export default defineConfig({
     // Giúp tránh lỗi CORS khi gọi API từ localhost
     proxy: {
       '/backend': {
-        target: 'https://sora.com', // Target server (Sora/OpenAI endpoint)
+        target: 'https://sora.chatgpt.com', // Target server (Sora/OpenAI endpoint)
         changeOrigin: true,
         secure: false,
         // cookieDomainRewrite: "localhost" // Đôi khi cần thiết nếu set cookie

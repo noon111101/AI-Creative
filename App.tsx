@@ -10,14 +10,17 @@ import { ApiTokens } from './types';
 const App: React.FC = () => {
   const [jsonInput, setJsonInput] = useState(INITIAL_JSON_TEMPLATE);
   
-  // Lazy initialization: Check localStorage first, then fall back to constants
+  // Logic khởi tạo:
+  // 1. Kiểm tra LocalStorage (Người dùng đã lưu trước đó)
+  // 2. Nếu không có, dùng DEFAULT_API_TOKENS (Lấy từ Vercel Env VITE_...)
+  // 3. Nếu không có cả hai, để chuỗi rỗng.
   const [tokens, setTokens] = useState<ApiTokens>(() => {
     const savedAuth = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
     const savedSentinel = localStorage.getItem(STORAGE_KEYS.SENTINEL_TOKEN);
     
     return {
-      authToken: savedAuth || DEFAULT_API_TOKENS.authToken || '',
-      sentinelToken: savedSentinel || DEFAULT_API_TOKENS.sentinelToken || ''
+      authToken: savedAuth !== null ? savedAuth : (DEFAULT_API_TOKENS.authToken || ''),
+      sentinelToken: savedSentinel !== null ? savedSentinel : (DEFAULT_API_TOKENS.sentinelToken || '')
     };
   });
   
