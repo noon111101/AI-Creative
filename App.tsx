@@ -1,14 +1,20 @@
+
 import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { TaskList } from './components/TaskList';
 import { ProgressBar } from './components/ProgressBar';
 import { ApiSettings } from './components/ApiSettings';
 import { ImageUploader } from './components/ImageUploader';
-import { INITIAL_JSON_TEMPLATE, DEFAULT_API_TOKENS } from './constants';
+import { INITIAL_JSON_TEMPLATE, DEFAULT_API_TOKENS, VARIANT_OPTIONS } from './constants';
 import { useBatchQueue } from './hooks/useBatchQueue';
+import { GlobalBatchConfig } from './types';
 
 const App: React.FC = () => {
   const [jsonInput, setJsonInput] = useState(INITIAL_JSON_TEMPLATE);
+  
+  // Global Config State
+  const [aspectRatio, setAspectRatio] = useState<'3:2' | '2:3'>('3:2');
+  const [nVariants, setNVariants] = useState<1 | 2>(1);
   
   // Tokens are now strictly read from Environment Variables
   const tokens = DEFAULT_API_TOKENS;
@@ -24,7 +30,13 @@ const App: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newQueue = initializeQueue(jsonInput);
+    
+    const config: GlobalBatchConfig = {
+        aspectRatio,
+        nVariants
+    };
+
+    const newQueue = initializeQueue(jsonInput, config);
     if (newQueue) {
       runBatch(newQueue, tokens);
     }
@@ -44,29 +56,68 @@ const App: React.FC = () => {
             
             {/* Form Section */}
             <form onSubmit={handleSubmit}>
+              
               <div className="mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <label htmlFor="json-input" className="block text-sm font-semibold text-gray-700">
-                    Task Configuration (JSON Array)
-                  </label>
-                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
-                    Batch Processing
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-semibold text-gray-800">Task Configuration</h2>
+                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full font-mono">
+                    Batch Mode
                   </span>
                 </div>
+
+                {/* Global Settings Toolbar */}
+                <div className="flex flex-col sm:flex-row gap-4 mb-4 p-4 bg-brand-50 rounded-xl border border-brand-100">
+                    <div className="flex-1">
+                        <label className="block text-xs font-semibold text-brand-800 uppercase tracking-wider mb-1">
+                            Aspect Ratio
+                        </label>
+                        <select 
+                            value={aspectRatio}
+                            onChange={(e) => setAspectRatio(e.target.value as '3:2' | '2:3')}
+                            disabled={isProcessing}
+                            className="block w-full rounded-md border-brand-200 text-sm focus:border-brand-500 focus:ring-brand-500 bg-white"
+                        >
+                            <option value="3:2">3:2 (Landscape - 720x480)</option>
+                            <option value="2:3">2:3 (Portrait - 360x540)</option>
+                        </select>
+                    </div>
+
+                    <div className="flex-1">
+                        <label className="block text-xs font-semibold text-brand-800 uppercase tracking-wider mb-1">
+                            Variants
+                        </label>
+                        <select 
+                            value={nVariants}
+                            onChange={(e) => setNVariants(Number(e.target.value) as 1 | 2)}
+                            disabled={isProcessing}
+                            className="block w-full rounded-md border-brand-200 text-sm focus:border-brand-500 focus:ring-brand-500 bg-white"
+                        >
+                            {VARIANT_OPTIONS.map(opt => (
+                                <option key={opt} value={opt}>{opt} Image{opt > 1 ? 's' : ''}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
                 <div className="relative">
+                  <div className="mb-2 flex justify-between items-end">
+                    <label htmlFor="json-input" className="block text-sm font-medium text-gray-700">
+                        Simplified JSON Input
+                    </label>
+                    <span className="text-xs text-gray-400">
+                        Array of <code>{`{ prompt, upload_media_id? }`}</code>
+                    </span>
+                  </div>
                   <textarea
                     id="json-input"
                     rows={10}
                     className={`block w-full rounded-lg border-gray-300 bg-slate-50 p-4 font-mono text-sm text-slate-800 focus:border-brand-500 focus:ring-brand-500 shadow-inner transition-colors ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    placeholder="Paste your JSON task array here..."
+                    placeholder={`[\n  { "prompt": "..." },\n  { "prompt": "...", "upload_media_id": "id1" }\n]`}
                     value={jsonInput}
                     onChange={(e) => setJsonInput(e.target.value)}
                     disabled={isProcessing}
                     spellCheck={false}
                   />
-                  <div className="absolute bottom-3 right-3 pointer-events-none">
-                     <span className="text-xs text-gray-400 opacity-50">JSON</span>
-                  </div>
                 </div>
               </div>
 

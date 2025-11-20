@@ -1,8 +1,26 @@
+
 export interface BatchInputItem {
   prompt: string;
   width?: number;
   height?: number;
+  n_variants?: number;
+  type?: string;
+  operation?: string;
+  model?: string;
+  is_storyboard?: boolean;
+  n_frames?: number;
+  inpaint_items?: any[];
   [key: string]: any;
+}
+
+export interface SimpleBatchItem {
+  prompt: string;
+  upload_media_id?: string; // Comma separated IDs
+}
+
+export interface GlobalBatchConfig {
+  aspectRatio: '3:2' | '2:3';
+  nVariants: 1 | 2;
 }
 
 export enum TaskStatus {
@@ -48,6 +66,7 @@ export interface UploadResponse {
   file_id?: string;
   file_url?: string;
   status: string;
+  upload_media_id?: string; // Crucial for remix
   [key: string]: any;
 }
 
@@ -55,4 +74,25 @@ export interface UploadLogItem {
   fileName: string;
   timestamp: string;
   response: any;
+}
+
+// --- Database Records ---
+
+export interface DbTaskRecord {
+  id?: number;
+  created_at?: string;
+  prompt: string;
+  status: string;
+  config: any;
+  result_data: any;
+  error_message?: string;
+}
+
+export interface DbUploadRecord {
+  id: number;
+  created_at: string;
+  file_name: string;
+  file_id?: string;
+  upload_media_id?: string;
+  raw_response?: any;
 }

@@ -1,3 +1,4 @@
+
 export const GEN_API_URL = '/backend/video_gen';
 export const STATUS_API_URL = '/backend/recent_tasks';
 export const UPLOAD_API_URL = '/backend/uploads';
@@ -31,29 +32,19 @@ export const SUPABASE_CONFIG = {
   anonKey: getEnv('VITE_SUPABASE_ANON_KEY')
 };
 
+export const ASPECT_RATIOS = {
+  '3:2': { width: 720, height: 480 },
+  '2:3': { width: 360, height: 540 }
+};
+
+export const VARIANT_OPTIONS = [1, 2];
+
 export const INITIAL_JSON_TEMPLATE = `[
   {
-    "prompt": "A cinematic, 3D realistic, live-action movie still of Spider-Man (Miles Morales variant). He is crouching on a wet, neon-lit rooftop in a futuristic New York City, looking down at the street below. Rain is falling, catching the light from his suit. The focus is on the reflection of the city lights in his mask. The scene should be dynamic, capturing the feeling of 'The Leap' of faith. 8K, cinematic volumetric lighting, high detail, shallow depth of field.",
-    "width": 720,
-    "height": 480,
-    "n_variants": 1,
-    "inpaint_items": [],
-    "operation": "remix",
-    "model": "turbo",
-    "is_storyboard": false,
-    "type": "image_gen",
-    "n_frames": 1
+    "prompt": "A cinematic, 3D realistic, live-action movie still of Spider-Man (Miles Morales variant)..."
   },
   {
-    "prompt": "A cinematic, 3D realistic, live-action movie still of Darth Vader standing alone on the bridge of a massive Imperial Star Destroyer. He is silhouetted against a distant, pale blue nebula visible through the enormous viewport. His red lightsaber is ignited, casting a deep crimson glow on his helmet and armor. The atmosphere is cold, imposing, and oppressive. Focus on the highly detailed textures of his suit and the metallic reflections. 8K, high detail, dramatic backlighting.",
-    "width": 720,
-    "height": 480,
-    "n_variants": 1,
-    "inpaint_items": [],
-    "operation": "remix",
-    "model": "turbo",
-    "is_storyboard": false,
-    "type": "image_gen",
-    "n_frames": 1
+    "prompt": "A cinematic, 3D realistic, live-action movie still of Naruto Uzumaki...",
+    "upload_media_id": "media_01k922f2sben1tfpm6ch0t184z"
   }
 ]`;
