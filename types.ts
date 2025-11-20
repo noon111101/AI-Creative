@@ -43,3 +43,16 @@ export interface ApiTokens {
   authToken: string;
   sentinelToken: string;
 }
+
+export interface UploadResponse {
+  file_id?: string;
+  file_url?: string;
+  status: string;
+  [key: string]: any;
+}
+
+export interface UploadLogItem {
+  fileName: string;
+  timestamp: string;
+  response: any;
+}

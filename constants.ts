@@ -1,15 +1,15 @@
 export const GEN_API_URL = '/backend/video_gen';
-export const STATUS_API_URL = '/backend/v2/recent_tasks';
+export const STATUS_API_URL = '/backend/recent_tasks';
+export const UPLOAD_API_URL = '/backend/uploads';
 export const POLLING_INTERVAL_MS = 8000;
 export const MAX_POLLING_ATTEMPTS = 100;
 
+// Removed Auth/Supabase storage keys to enforce ENV usage
 export const STORAGE_KEYS = {
-  AUTH_TOKEN: 'batchgen_auth_token',
-  SENTINEL_TOKEN: 'batchgen_sentinel_token',
+  // Only keeping keys that are strictly UI preferences if any (none for now)
 };
 
 // --- CONFIGURATION / ENVIRONMENT VARIABLES ---
-// Safe access to import.meta.env to prevent "Cannot read properties of undefined"
 const getEnv = (key: string) => {
   try {
     // @ts-ignore
@@ -24,6 +24,11 @@ const getEnv = (key: string) => {
 export const DEFAULT_API_TOKENS = {
   authToken: getEnv('VITE_AUTH_TOKEN'),      
   sentinelToken: getEnv('VITE_SENTINEL_TOKEN')   
+};
+
+export const SUPABASE_CONFIG = {
+  url: getEnv('VITE_SUPABASE_URL'),
+  anonKey: getEnv('VITE_SUPABASE_ANON_KEY')
 };
 
 export const INITIAL_JSON_TEMPLATE = `[

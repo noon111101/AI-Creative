@@ -3,26 +3,15 @@ import { Header } from './components/Header';
 import { TaskList } from './components/TaskList';
 import { ProgressBar } from './components/ProgressBar';
 import { ApiSettings } from './components/ApiSettings';
-import { INITIAL_JSON_TEMPLATE, STORAGE_KEYS, DEFAULT_API_TOKENS } from './constants';
+import { ImageUploader } from './components/ImageUploader';
+import { INITIAL_JSON_TEMPLATE, DEFAULT_API_TOKENS } from './constants';
 import { useBatchQueue } from './hooks/useBatchQueue';
-import { ApiTokens } from './types';
 
 const App: React.FC = () => {
   const [jsonInput, setJsonInput] = useState(INITIAL_JSON_TEMPLATE);
   
-  // Logic khởi tạo:
-  // 1. Kiểm tra LocalStorage (Người dùng đã lưu trước đó)
-  // 2. Nếu không có, dùng DEFAULT_API_TOKENS (Lấy từ Vercel Env VITE_...)
-  // 3. Nếu không có cả hai, để chuỗi rỗng.
-  const [tokens, setTokens] = useState<ApiTokens>(() => {
-    const savedAuth = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
-    const savedSentinel = localStorage.getItem(STORAGE_KEYS.SENTINEL_TOKEN);
-    
-    return {
-      authToken: savedAuth !== null ? savedAuth : (DEFAULT_API_TOKENS.authToken || ''),
-      sentinelToken: savedSentinel !== null ? savedSentinel : (DEFAULT_API_TOKENS.sentinelToken || '')
-    };
-  });
+  // Tokens are now strictly read from Environment Variables
+  const tokens = DEFAULT_API_TOKENS;
   
   const { 
     tasks, 
@@ -32,12 +21,6 @@ const App: React.FC = () => {
     initializeQueue, 
     runBatch 
   } = useBatchQueue();
-
-  const handleTokenSave = (newTokens: ApiTokens) => {
-    setTokens(newTokens);
-    localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, newTokens.authToken);
-    localStorage.setItem(STORAGE_KEYS.SENTINEL_TOKEN, newTokens.sentinelToken);
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +35,9 @@ const App: React.FC = () => {
       <div className="max-w-3xl mx-auto">
         <Header />
 
-        <ApiSettings tokens={tokens} onSave={handleTokenSave} />
+        <ApiSettings tokens={tokens} />
+
+        <ImageUploader tokens={tokens} />
 
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
           <div className="p-6 sm:p-8">

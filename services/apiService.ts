@@ -1,10 +1,11 @@
 import { 
   GEN_API_URL, 
   STATUS_API_URL, 
+  UPLOAD_API_URL,
   POLLING_INTERVAL_MS, 
   MAX_POLLING_ATTEMPTS 
 } from '../constants';
-import { ApiResponse, BatchInputItem, PollingResult, ApiTokens } from '../types';
+import { ApiResponse, BatchInputItem, PollingResult, ApiTokens, UploadResponse } from '../types';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -72,7 +73,7 @@ export const pollTaskUntilComplete = async (
     try {
       // Fetch recent tasks to find our specific task
       // Important: Do NOT send sentinel token here
-      const response = await fetch(`${STATUS_API_URL}?limit=1`, {
+      const response = await fetch(`${STATUS_API_URL}?limit=10`, {
         method: 'GET',
         headers: getHeaders(tokens, false) 
       });
@@ -108,4 +109,38 @@ export const pollTaskUntilComplete = async (
     status: 'failed', 
     error: `Task timed out after ${MAX_POLLING_ATTEMPTS} attempts.` 
   };
+};
+
+/**
+ * Uploads a file to the backend
+ * Uses FormData and specific headers
+ */
+export const uploadFile = async (file: File, tokens?: ApiTokens): Promise<UploadResponse> => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('file_name', file.name);
+
+    const headers: HeadersInit = {};
+    if (tokens?.authToken) {
+      headers['authorization'] = `Bearer ${tokens.authToken}`;
+    }
+    // Note: Do NOT set Content-Type for FormData, browser sets it with boundary automatically
+
+    const response = await fetch(UPLOAD_API_URL, {
+      method: 'POST',
+      headers: headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Upload Failed ${response.status}: ${errorText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Upload Error:", error);
+    throw error;
+  }
 };
