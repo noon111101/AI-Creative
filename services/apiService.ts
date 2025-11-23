@@ -115,11 +115,12 @@ export const pollTaskUntilComplete = async (
  * Uploads a file to the backend
  * Uses FormData and specific headers
  */
-export const uploadFile = async (file: File, tokens?: ApiTokens): Promise<UploadResponse> => {
+export const uploadFile = async (file: File, customName?: string, tokens?: ApiTokens): Promise<UploadResponse> => {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('file_name', file.name);
+    // Use custom name if provided, otherwise fallback to original filename
+    formData.append('file_name', customName || file.name);
 
     const headers: HeadersInit = {};
     if (tokens?.authToken) {

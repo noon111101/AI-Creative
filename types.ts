@@ -47,7 +47,7 @@ export interface ApiResponse {
   id: string;
   status?: string;
   failure_reason?: string;
-  media_url?: string;
+  generations?: any[]; // Array of generation results
   [key: string]: any;
 }
 
@@ -63,10 +63,11 @@ export interface ApiTokens {
 }
 
 export interface UploadResponse {
+  id?: string; // Media ID (media_...)
+  url?: string; // Direct URL
+  type?: string;
   file_id?: string;
-  file_url?: string;
-  status: string;
-  upload_media_id?: string; // Crucial for remix
+  upload_media_id?: string; 
   [key: string]: any;
 }
 
@@ -84,8 +85,8 @@ export interface DbTaskRecord {
   prompt: string;
   status: string;
   config: any;
-  result_data: any;
-  error_message?: string;
+  result_urls?: string; // Changed to string to match Postgres TEXT column (JSON stringified)
+  error_message?: string | null;
 }
 
 export interface DbUploadRecord {
@@ -94,5 +95,5 @@ export interface DbUploadRecord {
   file_name: string;
   file_id?: string;
   upload_media_id?: string;
-  raw_response?: any;
+  file_url?: string; // Changed to matches Postgres TEXT column
 }

@@ -1,7 +1,8 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ApiTokens, DbUploadRecord } from '../types';
 import { uploadFile } from '../services/apiService';
-import { logUploadToDb, fetchUploadHistory } from '../services/dbService';
+import { logUploadToDb, fetchUploadHistory, checkFileNameExists } from '../services/dbService';
 
 interface ImageUploaderProps {
   tokens: ApiTokens;
@@ -9,6 +10,7 @@ interface ImageUploaderProps {
 
 export const ImageUploader: React.FC<ImageUploaderProps> = ({ tokens }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [customFileName, setCustomFileName] = useState(''); // State for custom name
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -37,7 +39,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ tokens }) => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      setSelectedFile(file);
+      setCustomFileName(file.name); // Default to original name
       setError(null);
     }
   };
@@ -52,17 +56,27 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ tokens }) => {
     setIsUploading(true);
     setError(null);
 
+    const finalName = customFileName.trim() || selectedFile.name;
+
     try {
-      // 1. Upload to Sora API
-      const result = await uploadFile(selectedFile, tokens);
+      // 0. Check for duplicate name
+      const isDuplicate = await checkFileNameExists(finalName);
+      if (isDuplicate) {
+        throw new Error(`Filename "${finalName}" already exists in the library. Please choose a unique name.`);
+      }
+
+      // 1. Upload to Sora API (passing custom name)
+      const result = await uploadFile(selectedFile, finalName, tokens);
       
-      // 2. Save to Supabase
-      await logUploadToDb(selectedFile.name, result);
+      // 2. Save to Supabase (using custom name)
+      await logUploadToDb(finalName, result);
 
       // 3. Refresh List
       await loadHistory();
 
+      // Reset form
       setSelectedFile(null);
+      setCustomFileName('');
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err: any) {
       setError(err.message || "Upload failed");
@@ -74,7 +88,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ tokens }) => {
   const copyToClipboard = (text: string | undefined) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
-    // Could add a toast notification here
   };
 
   return (
@@ -87,35 +100,58 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ tokens }) => {
       </h3>
 
       {/* Upload Section */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center mb-6 pb-6 border-b border-gray-100">
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept="image/*"
-          disabled={isUploading}
-          className="block w-full text-sm text-slate-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-full file:border-0
-            file:text-sm file:font-semibold
-            file:bg-brand-50 file:text-brand-700
-            hover:file:bg-brand-100
-          "
-        />
-        <button
-          onClick={handleUpload}
-          disabled={!selectedFile || isUploading}
-          className={`px-4 py-2 rounded-lg text-white font-medium text-sm transition-colors min-w-[100px]
-            ${!selectedFile || isUploading 
-              ? 'bg-gray-300 cursor-not-allowed' 
-              : 'bg-brand-600 hover:bg-brand-700'}`}
-        >
-          {isUploading ? 'Uploading...' : 'Upload'}
-        </button>
+      <div className="flex flex-col gap-4 mb-6 pb-6 border-b border-gray-100">
+        
+        {/* File Input */}
+        <div className="w-full">
+            <label className="block text-sm font-medium text-gray-700 mb-1">1. Select Image</label>
+            <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            disabled={isUploading}
+            className="block w-full text-sm text-slate-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-brand-50 file:text-brand-700
+                hover:file:bg-brand-100
+            "
+            />
+        </div>
+
+        {/* Custom Name Input (Only shows when file is selected) */}
+        {selectedFile && (
+            <div className="w-full animate-fadeIn">
+                <label className="block text-sm font-medium text-gray-700 mb-1">2. Rename (Required Unique)</label>
+                <input 
+                    type="text" 
+                    value={customFileName}
+                    onChange={(e) => setCustomFileName(e.target.value)}
+                    placeholder="Enter a memorable name..."
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 sm:text-sm px-4 py-2 border"
+                />
+            </div>
+        )}
+
+        {/* Upload Button */}
+        <div>
+            <button
+            onClick={handleUpload}
+            disabled={!selectedFile || isUploading}
+            className={`px-4 py-2 rounded-lg text-white font-medium text-sm transition-colors w-full sm:w-auto
+                ${!selectedFile || isUploading 
+                ? 'bg-gray-300 cursor-not-allowed' 
+                : 'bg-brand-600 hover:bg-brand-700'}`}
+            >
+            {isUploading ? 'Checking & Uploading...' : 'Upload & Save to Library'}
+            </button>
+        </div>
       </div>
 
       {error && (
-        <div className="mb-4 text-sm text-red-600 bg-red-50 p-2 rounded border border-red-100">
+        <div className="mb-4 text-sm text-red-600 bg-red-50 p-2 rounded border border-red-100 font-medium">
           {error}
         </div>
       )}
@@ -139,20 +175,28 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ tokens }) => {
                     <thead className="bg-gray-50">
                         <tr>
                             <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File Name</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Media ID (For Remix)</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Media ID</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">View</th>
                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                         {dbHistory.map((item) => (
                             <tr key={item.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-2 text-sm font-medium text-gray-900">{item.file_name}</td>
+                                <td className="px-4 py-2 text-sm font-medium text-gray-900 max-w-[200px] truncate" title={item.file_name}>
+                                    {item.file_name}
+                                </td>
                                 <td className="px-4 py-2 text-xs font-mono text-gray-600">
                                     {item.upload_media_id || item.file_id || "N/A"}
                                 </td>
-                                <td className="px-4 py-2 text-xs text-gray-500">
-                                    {new Date(item.created_at).toLocaleDateString()}
+                                <td className="px-4 py-2 text-xs">
+                                    {item.file_url ? (
+                                        <a href={item.file_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
+                                            View Image
+                                        </a>
+                                    ) : (
+                                        <span className="text-gray-400">-</span>
+                                    )}
                                 </td>
                                 <td className="px-4 py-2 text-right">
                                     <button
