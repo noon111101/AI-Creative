@@ -1,6 +1,9 @@
-
 {
   "rewrites": [
+    {
+      "source": "/backend/:match*",
+      "destination": "https://sora.chatgpt.com/backend/:match*"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
