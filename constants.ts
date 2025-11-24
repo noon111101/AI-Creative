@@ -22,7 +22,7 @@ const IS_DEV = !!safeEnv.DEV;
 const API_BASE = IS_DEV ? '/backend' : 'https://sora.chatgpt.com/backend';
 
 export const GEN_API_URL = `${API_BASE}/video_gen`;
-export const STATUS_API_URL = `${API_BASE}/recent_tasks`;
+export const STATUS_API_URL = `${API_BASE}/v2/recent_tasks`;
 export const UPLOAD_API_URL = `${API_BASE}/uploads`;
 
 export const POLLING_INTERVAL_MS = 8000;
