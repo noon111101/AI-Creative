@@ -1,5 +1,5 @@
 {
   "name": "BatchGen Pro",
-  "description": "A professional batch image generation tool featuring sequential processing, real-time status monitoring, and a clean Tailwind CSS interface.",
+  "description": "Sequential high-fidelity image generation pipeline.",
   "requestFramePermissions": []
 }
