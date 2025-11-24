@@ -73,7 +73,7 @@ export const pollTaskUntilComplete = async (
     try {
       // Fetch recent tasks to find our specific task
       // Important: Do NOT send sentinel token here
-      const response = await fetch(`${STATUS_API_URL}?limit=10`, {
+      const response = await fetch(`${STATUS_API_URL}?limit=1`, {
         method: 'GET',
         headers: getHeaders(tokens, false) 
       });
