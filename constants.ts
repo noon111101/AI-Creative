@@ -1,4 +1,5 @@
 
+// Changed to Absolute URLs for Direct Browser Access (requires CORS Extension)
 export const GEN_API_URL = 'https://sora.chatgpt.com/backend/video_gen';
 export const STATUS_API_URL = 'https://sora.chatgpt.com/backend/recent_tasks';
 export const UPLOAD_API_URL = 'https://sora.chatgpt.com/backend/uploads';
