@@ -1,16 +1,18 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { TaskList } from './components/TaskList';
 import { ProgressBar } from './components/ProgressBar';
 import { ApiSettings } from './components/ApiSettings';
 import { ImageUploader } from './components/ImageUploader';
+import { MediaGallery } from './components/MediaGallery';
 import { INITIAL_JSON_TEMPLATE, DEFAULT_API_TOKENS, VARIANT_OPTIONS } from './constants';
 import { useBatchQueue } from './hooks/useBatchQueue';
 import { GlobalBatchConfig } from './types';
 
 const App: React.FC = () => {
   const [jsonInput, setJsonInput] = useState(INITIAL_JSON_TEMPLATE);
+  const [refreshGalleryKey, setRefreshGalleryKey] = useState(0);
   
   // Global Config State
   const [aspectRatio, setAspectRatio] = useState<'3:2' | '2:3'>('3:2');
@@ -28,6 +30,13 @@ const App: React.FC = () => {
     runBatch 
   } = useBatchQueue();
 
+  // Refresh gallery when tasks complete
+  useEffect(() => {
+    if (completedCount > 0) {
+        setRefreshGalleryKey(prev => prev + 1);
+    }
+  }, [completedCount]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -42,16 +51,20 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUploadSuccess = () => {
+    setRefreshGalleryKey(prev => prev + 1);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <Header />
 
         <ApiSettings tokens={tokens} />
 
-        <ImageUploader tokens={tokens} />
+        <ImageUploader tokens={tokens} onUploadSuccess={handleUploadSuccess} />
 
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden mb-8">
           <div className="p-6 sm:p-8">
             
             {/* Form Section */}
@@ -110,7 +123,7 @@ const App: React.FC = () => {
                   </div>
                   <textarea
                     id="json-input"
-                    rows={10}
+                    rows={8}
                     className={`block w-full rounded-lg border-gray-300 bg-slate-50 p-4 font-mono text-sm text-slate-800 focus:border-brand-500 focus:ring-brand-500 shadow-inner transition-colors ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}
                     placeholder={`[\n  { "prompt": "..." },\n  { "prompt": "...", "upload_media_id": "id1" }\n]`}
                     value={jsonInput}
@@ -162,7 +175,7 @@ const App: React.FC = () => {
               </button>
             </form>
             
-            {/* Progress & Results Section */}
+            {/* Progress & Current Batch Results Section */}
             {(tasks.length > 0) && (
                <div className="mt-8 border-t border-gray-100 pt-8">
                   <ProgressBar 
@@ -175,6 +188,10 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Media Gallery (Uploads & History) */}
+        <MediaGallery refreshTrigger={refreshGalleryKey} />
+        
       </div>
     </div>
   );

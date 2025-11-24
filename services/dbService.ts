@@ -43,6 +43,25 @@ export const fetchUploadHistory = async (): Promise<DbUploadRecord[]> => {
 };
 
 /**
+ * Fetches the task generation history from Supabase
+ */
+export const fetchTaskHistory = async (): Promise<DbTaskRecord[]> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('sora_tasks')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching task history:', error);
+    return [];
+  }
+  return data as DbTaskRecord[];
+};
+
+/**
  * Logs a new upload to Supabase
  * Extracts only the URL and ID from the response
  */

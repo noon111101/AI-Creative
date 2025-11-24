@@ -1,8 +1,30 @@
 
-// Changed back to Relative URLs to use the robust Local Proxy (Fixes CORS Preflight)
-export const GEN_API_URL = '/backend/video_gen';
-export const STATUS_API_URL = '/backend/v2/recent_tasks';
-export const UPLOAD_API_URL = '/backend/uploads';
+
+// Helper to safely access import.meta.env without crashing
+const getSafeEnv = (): any => {
+  try {
+    // @ts-ignore
+    return (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+const safeEnv = getSafeEnv();
+
+// Determine environment
+// If DEV is true, we are in local development (Vite).
+const IS_DEV = !!safeEnv.DEV;
+
+// Logic:
+// - Development (Local): Use relative path '/backend' to trigger Vite Proxy (with Header Spoofing)
+// - Production (Vercel): Use absolute URL to bypass Vercel IP blocking (Requires CORS Extension)
+const API_BASE = IS_DEV ? '/backend' : 'https://sora.chatgpt.com/backend';
+
+export const GEN_API_URL = `${API_BASE}/video_gen`;
+export const STATUS_API_URL = `${API_BASE}/recent_tasks`;
+export const UPLOAD_API_URL = `${API_BASE}/uploads`;
+
 export const POLLING_INTERVAL_MS = 8000;
 export const MAX_POLLING_ATTEMPTS = 100;
 
@@ -14,9 +36,8 @@ export const STORAGE_KEYS = {
 // --- CONFIGURATION / ENVIRONMENT VARIABLES ---
 const getEnv = (key: string) => {
   try {
-    // @ts-ignore
-    const env = import.meta.env;
-    return (env && env[key]) || '';
+    const val = safeEnv[key];
+    return val || '';
   } catch (e) {
     console.warn('Environment variable access failed', e);
     return '';
