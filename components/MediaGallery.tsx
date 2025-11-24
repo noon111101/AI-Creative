@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { DbUploadRecord, DbTaskRecord } from '../types';
-import { fetchUploadHistory, fetchTaskHistory } from '../services/dbService';
+import { fetchUploadHistory, fetchTaskHistory, deleteUploadRecord, deleteTaskRecord } from '../services/dbService';
 
 interface MediaGalleryProps {
   refreshTrigger: number;
@@ -68,6 +68,32 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
     // Could add a toast notification here
   };
 
+  const handleDeleteUpload = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this uploaded media?')) return;
+    
+    // Optimistic update logic or wait for API
+    const success = await deleteUploadRecord(id);
+    if (success) {
+        setUploads(prev => prev.filter(item => item.id !== id));
+    } else {
+        alert('Failed to delete media');
+    }
+  };
+
+  const handleDeleteTask = async (id: number | undefined, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!id) return;
+    if (!window.confirm('Are you sure you want to delete this task history?')) return;
+
+    const success = await deleteTaskRecord(id);
+    if (success) {
+        setHistory(prev => prev.filter(item => item.id !== id));
+    } else {
+        alert('Failed to delete task history');
+    }
+  };
+
   const TabButton = ({ id, label, count }: { id: 'uploads' | 'history', label: string, count?: number }) => (
     <button
       onClick={() => setActiveTab(id)}
@@ -126,18 +152,34 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
                     />
                     
+                    {/* Delete Button - Visible on Hover */}
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <button 
+                            onClick={(e) => handleDeleteUpload(item.id, e)}
+                            className="bg-white/90 hover:bg-red-50 text-gray-500 hover:text-red-600 p-1.5 rounded-full shadow-sm transition-colors border border-transparent hover:border-red-100"
+                            title="Delete Media"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
+
                     {/* Overlay Actions */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                      <p className="text-white text-xs font-medium truncate mb-2" title={item.file_name}>{item.file_name}</p>
-                      <button 
-                        onClick={() => copyToClipboard(item.upload_media_id || item.file_id)}
-                        className="w-full bg-white/90 hover:bg-white text-brand-700 text-xs font-bold py-2 rounded shadow-sm transition-colors flex items-center justify-center"
-                      >
-                        <svg className="w-3 h-3 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        Copy Media ID
-                      </button>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 pointer-events-none">
+                      {/* Enable pointer events only for interactive elements */}
+                      <div className="pointer-events-auto">
+                        <p className="text-white text-xs font-medium truncate mb-2" title={item.file_name}>{item.file_name}</p>
+                        <button 
+                            onClick={() => copyToClipboard(item.upload_media_id || item.file_id)}
+                            className="w-full bg-white/90 hover:bg-white text-brand-700 text-xs font-bold py-2 rounded shadow-sm transition-colors flex items-center justify-center"
+                        >
+                            <svg className="w-3 h-3 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                            Copy Media ID
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -160,7 +202,7 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
                   } catch (e) { urls = []; }
                   
                   return (
-                    <div key={task.id} className="bg-white border border-gray-100 rounded-xl p-4 hover:border-brand-200 transition-colors shadow-sm">
+                    <div key={task.id} className="bg-white border border-gray-100 rounded-xl p-4 hover:border-brand-200 transition-colors shadow-sm relative group">
                       <div className="flex justify-between items-start mb-3">
                          <div className="flex-1 mr-4">
                             <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -177,6 +219,17 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
                                 <span className="font-semibold text-gray-900">Prompt:</span> {task.prompt}
                             </p>
                          </div>
+                         
+                         {/* Delete Task Button */}
+                         <button 
+                             onClick={(e) => handleDeleteTask(task.id, e)}
+                             className="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                             title="Delete History"
+                         >
+                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                             </svg>
+                         </button>
                       </div>
 
                       {/* Generated Images Grid based on URLs */}

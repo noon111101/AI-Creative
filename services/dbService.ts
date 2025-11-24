@@ -131,3 +131,41 @@ export const logTaskToDb = async (task: ProcessedTask) => {
     console.log('✅ Task saved to DB successfully:', record);
   }
 };
+
+/**
+ * Deletes an upload record from Supabase
+ */
+export const deleteUploadRecord = async (id: number): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+
+  const { error } = await supabase
+    .from('sora_uploads')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting upload:', error);
+    return false;
+  }
+  return true;
+};
+
+/**
+ * Deletes a task record from Supabase
+ */
+export const deleteTaskRecord = async (id: number): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+
+  const { error } = await supabase
+    .from('sora_tasks')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting task:', error);
+    return false;
+  }
+  return true;
+};
