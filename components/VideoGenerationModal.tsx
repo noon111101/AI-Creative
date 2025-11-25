@@ -10,6 +10,44 @@ interface VideoGenerationModalProps {
   tokens: ApiTokens;
 }
 
+// Helper to convert any image URL to a clean JPEG Base64 string
+// This fixes issues where the API rejects PNGs or other formats
+const convertImageToJpegBase64 = (src: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // Enable CORS for canvas manipulation
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        // Ensure even dimensions to be safe (though not strictly required for upload, good for video)
+        canvas.width = img.width; 
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+        // White background in case of transparent PNGs
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.drawImage(img, 0, 0);
+        
+        // Export as JPEG with high quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        resolve(dataUrl);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = (e) => {
+      console.error("Image load error", e);
+      reject(new Error("Failed to load image for processing. Possible CORS issue."));
+    };
+    img.src = src;
+  });
+};
+
 export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({ 
   isOpen, 
   onClose, 
@@ -41,23 +79,17 @@ export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({
     }
 
     try {
-        // 1. Fetch image and convert to base64
+        // 1. Process Image
         setStatus('uploading');
-        setStatusMsg('Fetching image and preparing upload...');
+        setStatusMsg('Processing image (converting to JPEG)...');
         
-        const imgResp = await fetch(imageUrl);
-        const blob = await imgResp.blob();
-        const reader = new FileReader();
-        
-        const base64Data = await new Promise<string>((resolve, reject) => {
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
+        // Convert the image to a standardized JPEG Base64 string
+        // This handles format conversion and ensures valid base64 for the API
+        const jpegBase64 = await convertImageToJpegBase64(imageUrl);
 
         setStatusMsg('Uploading to Veo3...');
-        // Use googleToken, not authToken
-        const mediaId = await uploadImageToGoogleLabs(base64Data, blob.type, tokens.googleToken);
+        // Upload (always as image/jpeg)
+        const mediaId = await uploadImageToGoogleLabs(jpegBase64, tokens.googleToken);
         
         // 2. Start Generation
         setStatus('generating');
@@ -77,7 +109,7 @@ export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({
         setStatus('completed');
 
     } catch (e: any) {
-        console.error(e);
+        console.error("Video Gen Error:", e);
         setStatus('failed');
         setStatusMsg(e.message || "Unknown error occurred");
     }

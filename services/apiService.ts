@@ -156,14 +156,14 @@ export const uploadFile = async (file: File, customName?: string, tokens?: ApiTo
 /**
  * Uploads an image (as base64) to Google Labs for video generation
  */
-export const uploadImageToGoogleLabs = async (base64Data: string, mimeType: string, googleToken: string): Promise<string> => {
-  // Strip prefix if present (e.g. data:image/jpeg;base64,)
-  const rawBase64 = base64Data.split(',')[1] || base64Data;
+export const uploadImageToGoogleLabs = async (jpegBase64: string, googleToken: string): Promise<string> => {
+  // Ensure we have raw base64 (remove data:image/jpeg;base64, prefix if present)
+  const rawBase64 = jpegBase64.includes(',') ? jpegBase64.split(',')[1] : jpegBase64;
 
   const payload = {
     imageInput: {
       rawImageBytes: rawBase64,
-      mimeType: "image/jpeg", // Forced to match curl working example
+      mimeType: "image/jpeg", // We strictly convert to JPEG in the UI before sending
       isUserUploaded: true,
       aspectRatio: "IMAGE_ASPECT_RATIO_LANDSCAPE"
     },
@@ -177,7 +177,7 @@ export const uploadImageToGoogleLabs = async (base64Data: string, mimeType: stri
     method: 'POST',
     headers: {
       'authorization': `Bearer ${googleToken}`,
-      'content-type': 'text/plain;charset=UTF-8', // Important: Google Labs uses this for JSON payload sometimes
+      'content-type': 'text/plain;charset=UTF-8', // Google Labs specific
       'accept': '*/*'
     },
     body: JSON.stringify(payload)
@@ -185,7 +185,13 @@ export const uploadImageToGoogleLabs = async (base64Data: string, mimeType: stri
 
   if (!response.ok) {
     const txt = await response.text();
-    throw new Error(`Google Upload Failed (${response.status}): ${txt}`);
+    // Try to parse error for better message
+    try {
+        const errJson = JSON.parse(txt);
+        throw new Error(`Google Upload Error: ${errJson.error?.message || txt}`);
+    } catch (e) {
+        throw new Error(`Google Upload Failed (${response.status}): ${txt}`);
+    }
   }
 
   const data = await response.json();
