@@ -30,11 +30,10 @@ export default defineConfig({
           });
         },
       },
-      '/google-labs': {
+      '/v1': {
         target: 'https://aisandbox-pa.googleapis.com',
         changeOrigin: true,
         secure: true,
-        rewrite: (path) => path.replace(/^\/google-labs/, ''),
         configure: (proxy, _options) => {
           proxy.on('proxyReq', (proxyReq, req, _res) => {
             proxyReq.setHeader('origin', 'https://labs.google');
