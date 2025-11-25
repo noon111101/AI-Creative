@@ -60,6 +60,7 @@ export interface PollingResult {
 export interface ApiTokens {
   authToken: string;
   sentinelToken: string;
+  googleToken?: string;
 }
 
 export interface UploadResponse {

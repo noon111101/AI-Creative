@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { DbUploadRecord, DbTaskRecord } from '../types';
 import { fetchUploadHistory, fetchTaskHistory, deleteUploadRecord, deleteTaskRecord } from '../services/dbService';
+import { VideoGenerationModal } from './VideoGenerationModal';
+import { DEFAULT_API_TOKENS } from '../constants';
 
 interface MediaGalleryProps {
   refreshTrigger: number;
@@ -40,6 +42,10 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
   const [uploads, setUploads] = useState<DbUploadRecord[]>([]);
   const [history, setHistory] = useState<DbTaskRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Video Generation Modal State
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [selectedImageForVideo, setSelectedImageForVideo] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -94,6 +100,13 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
     }
   };
 
+  const handleOpenVideoGen = (imageUrl: string | undefined, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!imageUrl) return;
+      setSelectedImageForVideo(imageUrl);
+      setIsVideoModalOpen(true);
+  };
+
   const TabButton = ({ id, label, count }: { id: 'uploads' | 'history', label: string, count?: number }) => (
     <button
       onClick={() => setActiveTab(id)}
@@ -113,6 +126,7 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
   );
 
   return (
+    <>
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-8">
       {/* Tabs */}
       <div className="flex border-b border-gray-200">
@@ -152,8 +166,20 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
                     />
                     
-                    {/* Delete Button - Visible on Hover */}
-                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    {/* Actions - Visible on Hover */}
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex flex-col gap-2">
+                         {/* Generate Video Button */}
+                         <button 
+                            onClick={(e) => handleOpenVideoGen(item.file_url, e)}
+                            className="bg-white/90 hover:bg-purple-50 text-gray-500 hover:text-purple-600 p-1.5 rounded-full shadow-sm transition-colors border border-transparent hover:border-purple-100"
+                            title="Generate Video (Veo3)"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                        </button>
+                        
+                        {/* Delete Button */}
                         <button 
                             onClick={(e) => handleDeleteUpload(item.id, e)}
                             className="bg-white/90 hover:bg-red-50 text-gray-500 hover:text-red-600 p-1.5 rounded-full shadow-sm transition-colors border border-transparent hover:border-red-100"
@@ -237,13 +263,25 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
                         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3 mt-3">
                            {urls.map((url, idx) => (
                              <div key={idx} className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden group shadow-sm border border-gray-200">
+                                <div className="absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                     <button 
+                                        onClick={(e) => handleOpenVideoGen(url, e)}
+                                        className="bg-white/90 text-purple-600 p-1 rounded-full shadow hover:bg-purple-50"
+                                        title="Animate this image (Veo3)"
+                                     >
+                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                         </svg>
+                                     </button>
+                                </div>
+                                
                                 <a href={url} target="_blank" rel="noopener noreferrer">
                                     <ImageWithFallback 
                                         src={url} 
                                         alt={`Result ${idx}`} 
                                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
                                     />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                                         <svg className="w-8 h-8 text-white drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -266,6 +304,15 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
           </>
         )}
       </div>
+
+      {/* Video Generation Modal */}
+      <VideoGenerationModal 
+        isOpen={isVideoModalOpen}
+        onClose={() => setIsVideoModalOpen(false)}
+        imageUrl={selectedImageForVideo}
+        tokens={DEFAULT_API_TOKENS}
+      />
     </div>
+    </>
   );
 };

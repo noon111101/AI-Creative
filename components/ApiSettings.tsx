@@ -16,6 +16,7 @@ export const ApiSettings: React.FC<ApiSettingsProps> = ({ tokens }) => {
 
   const hasAuthToken = !!tokens.authToken;
   const hasSentinelToken = !!tokens.sentinelToken;
+  const hasGoogleToken = !!tokens.googleToken;
   const hasSupabaseConfig = !!(SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey);
 
   useEffect(() => {
@@ -111,6 +112,21 @@ export const ApiSettings: React.FC<ApiSettingsProps> = ({ tokens }) => {
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400">{hasSentinelToken ? 'Loaded' : 'Missing'}</span>
                     <StatusIcon active={hasSentinelToken} />
+                </div>
+            </div>
+
+            {/* Google Labs Token */}
+            <div className="flex items-center justify-between bg-white p-3 rounded border border-gray-200">
+                <div className="flex items-center">
+                    <span className="w-2 h-2 bg-purple-500 rounded-full mr-3"></span>
+                    <div>
+                        <p className="text-sm font-medium text-gray-900">Google Labs Token (Veo3)</p>
+                        <p className="text-xs text-gray-500 font-mono">VITE_GOOGLE_LABS_TOKEN</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{hasGoogleToken ? 'Loaded' : 'Missing'}</span>
+                    <StatusIcon active={hasGoogleToken} />
                 </div>
             </div>
 

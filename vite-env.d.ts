@@ -1,6 +1,7 @@
 interface ImportMetaEnv {
   readonly VITE_AUTH_TOKEN: string
   readonly VITE_SENTINEL_TOKEN: string
+  readonly VITE_GOOGLE_LABS_TOKEN: string
   readonly VITE_SUPABASE_URL: string
   readonly VITE_SUPABASE_ANON_KEY: string
 }

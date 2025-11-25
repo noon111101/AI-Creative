@@ -1,7 +1,11 @@
+
 import { 
   GEN_API_URL, 
   STATUS_API_URL, 
   UPLOAD_API_URL,
+  GOOGLE_UPLOAD_URL,
+  GOOGLE_GEN_VIDEO_URL,
+  GOOGLE_CHECK_STATUS_URL,
   POLLING_INTERVAL_MS, 
   MAX_POLLING_ATTEMPTS 
 } from '../constants';
@@ -144,4 +148,171 @@ export const uploadFile = async (file: File, customName?: string, tokens?: ApiTo
     console.error("Upload Error:", error);
     throw error;
   }
+};
+
+
+// --- VEO3 VIDEO GENERATION SERVICES ---
+
+/**
+ * Uploads an image (as base64) to Google Labs for video generation
+ */
+export const uploadImageToGoogleLabs = async (base64Data: string, mimeType: string, googleToken: string): Promise<string> => {
+  // Strip prefix if present (e.g. data:image/jpeg;base64,)
+  const rawBase64 = base64Data.split(',')[1] || base64Data;
+
+  const payload = {
+    imageInput: {
+      rawImageBytes: rawBase64,
+      mimeType: mimeType,
+      isUserUploaded: true,
+      aspectRatio: "IMAGE_ASPECT_RATIO_LANDSCAPE"
+    },
+    clientContext: {
+      sessionId: `;${Date.now()}`,
+      tool: "ASSET_MANAGER"
+    }
+  };
+
+  const response = await fetch(GOOGLE_UPLOAD_URL, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${googleToken}`,
+      'content-type': 'text/plain;charset=UTF-8',
+      'accept': '*/*'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error(`Google Upload Failed: ${txt}`);
+  }
+
+  const data = await response.json();
+  // Expecting data.imageResult.mediaId
+  if (data?.imageResult?.mediaId) {
+    return data.imageResult.mediaId;
+  }
+  throw new Error("No mediaId returned from Google Upload");
+};
+
+/**
+ * Starts the Veo3 video generation task
+ */
+export const startVeoVideoGeneration = async (
+  prompt: string, 
+  googleMediaId: string, 
+  googleToken: string
+): Promise<{ operationName: string, sceneId: string }> => {
+  
+  const sceneId = crypto.randomUUID();
+
+  const payload = {
+    clientContext: {
+        sessionId: `;${Date.now()}`,
+        projectId: "6544d32f-ac52-499d-8ec2-0eb0e1588330", // Fixed ID from example
+        tool: "PINHOLE",
+        userPaygateTier: "PAYGATE_TIER_ONE"
+    },
+    requests: [
+        {
+            aspectRatio: "VIDEO_ASPECT_RATIO_LANDSCAPE",
+            seed: Math.floor(Math.random() * 100000), // Random seed
+            textInput: { prompt: prompt },
+            videoModelKey: "veo_3_1_i2v_s_fast",
+            startImage: { mediaId: googleMediaId },
+            metadata: { sceneId: sceneId }
+        }
+    ]
+  };
+
+  const response = await fetch(GOOGLE_GEN_VIDEO_URL, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${googleToken}`,
+      'content-type': 'text/plain;charset=UTF-8',
+      'accept': '*/*'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error(`Start Video Gen Failed: ${txt}`);
+  }
+
+  const data = await response.json();
+  // Expecting data.responses[0].operation.name
+  const opName = data?.responses?.[0]?.operation?.name;
+  if (!opName) throw new Error("No operation name returned for video gen");
+
+  return { operationName: opName, sceneId };
+};
+
+/**
+ * Polls the Veo3 task status
+ */
+export const pollVeoVideoStatus = async (
+  operationName: string, 
+  sceneId: string,
+  googleToken: string,
+  onUpdate?: (msg: string) => void
+): Promise<string> => {
+  let attempts = 0;
+  const maxAttempts = 60; // 60 * 5s = 5 mins
+
+  while (attempts < maxAttempts) {
+    await delay(5000); // 5 sec delay
+    attempts++;
+    if (onUpdate) onUpdate(`Polling attempt ${attempts}/${maxAttempts}...`);
+
+    const payload = {
+      operations: [
+        {
+          operation: { name: operationName },
+          sceneId: sceneId,
+          status: "MEDIA_GENERATION_STATUS_PENDING"
+        }
+      ]
+    };
+
+    const response = await fetch(GOOGLE_CHECK_STATUS_URL, {
+      method: 'POST',
+      headers: {
+        'authorization': `Bearer ${googleToken}`,
+        'content-type': 'text/plain;charset=UTF-8',
+        'accept': '*/*'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      console.warn("Poll check failed, retrying...");
+      continue;
+    }
+
+    const data = await response.json();
+    const resultOp = data?.operations?.[0];
+    
+    // Check for done
+    // Success structure typically has `response` with `videoResult`
+    if (resultOp?.done) {
+       // Check for success data
+       const videoUri = resultOp?.response?.videoResult?.video?.uri;
+       if (videoUri) return videoUri;
+
+       // Check for error
+       if (resultOp?.error) {
+         throw new Error(`Video Gen Failed: ${JSON.stringify(resultOp.error)}`);
+       }
+       
+       // Fallback
+       if (resultOp?.response) {
+         // Sometimes structure varies
+         return resultOp.response.videoResult?.video?.uri || "";
+       }
+    }
+  }
+  
+  throw new Error("Polling timed out for video generation");
 };

@@ -1,5 +1,6 @@
 
 
+
 // Helper to safely access import.meta.env without crashing
 const getSafeEnv = (): any => {
   try {
@@ -20,10 +21,15 @@ const IS_DEV = !!safeEnv.DEV;
 // - Development (Local): Use relative path '/backend' to trigger Vite Proxy (with Header Spoofing)
 // - Production (Vercel): Use absolute URL to bypass Vercel IP blocking (Requires CORS Extension)
 const API_BASE = IS_DEV ? '/backend' : 'https://sora.chatgpt.com/backend';
+const GOOGLE_LABS_BASE = '/google-labs'; // Always use proxy for Google Labs to handle complex headers
 
 export const GEN_API_URL = `${API_BASE}/video_gen`;
 export const STATUS_API_URL = `${API_BASE}/v2/recent_tasks`;
 export const UPLOAD_API_URL = `${API_BASE}/uploads`;
+
+export const GOOGLE_UPLOAD_URL = `${GOOGLE_LABS_BASE}/v1:uploadUserImage`;
+export const GOOGLE_GEN_VIDEO_URL = `${GOOGLE_LABS_BASE}/v1/video:batchAsyncGenerateVideoStartImage`;
+export const GOOGLE_CHECK_STATUS_URL = `${GOOGLE_LABS_BASE}/v1/video:batchCheckAsyncVideoGenerationStatus`;
 
 export const POLLING_INTERVAL_MS = 8000;
 export const MAX_POLLING_ATTEMPTS = 100;
@@ -46,7 +52,8 @@ const getEnv = (key: string) => {
 
 export const DEFAULT_API_TOKENS = {
   authToken: getEnv('VITE_AUTH_TOKEN'),      
-  sentinelToken: getEnv('VITE_SENTINEL_TOKEN')   
+  sentinelToken: getEnv('VITE_SENTINEL_TOKEN'),
+  googleToken: getEnv('VITE_GOOGLE_LABS_TOKEN')
 };
 
 export const SUPABASE_CONFIG = {
