@@ -10,6 +10,7 @@ import {
   MAX_POLLING_ATTEMPTS 
 } from '../constants';
 import { ApiResponse, BatchInputItem, PollingResult, ApiTokens, UploadResponse } from '../types';
+import { logVeoImageToDb, logVeoVideoTaskToDb, upsertVeoVideoTask } from './dbService';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -156,7 +157,7 @@ export const uploadFile = async (file: File, customName?: string, tokens?: ApiTo
 /**
  * Uploads an image (as base64) to Google Labs for video generation
  */
-export const uploadImageToGoogleLabs = async (jpegBase64: string, googleToken: string): Promise<string> => {
+export const uploadImageToGoogleLabs = async (jpegBase64: string, googleToken: string, originalFileName?: string, originalFileId?: string): Promise<string> => {
   // Ensure we have raw base64 (remove data:image/jpeg;base64, prefix if present)
   const rawBase64 = jpegBase64.includes(',') ? jpegBase64.split(',')[1] : jpegBase64;
 
@@ -195,10 +196,29 @@ export const uploadImageToGoogleLabs = async (jpegBase64: string, googleToken: s
   }
 
   const data = await response.json();
-  // Expecting data.imageResult.mediaId
-  if (data?.imageResult?.mediaId) {
-    return data.imageResult.mediaId;
+  // Support new and legacy response shapes for image upload:
+  // New: { mediaGenerationId: { mediaGenerationId: "..." }, width, height }
+  // Legacy: { imageResult: { mediaId: "..." } }
+  const mediaId = data?.mediaGenerationId?.mediaGenerationId || data?.imageResult?.mediaId;
+  if (mediaId) {
+    // Best-effort: persist veo image metadata into Supabase
+    try {
+      await logVeoImageToDb(mediaId, data?.width ?? null, data?.height ?? null, undefined, data);
+      // If caller provided the original upload identifier, link the sora_uploads row so we can skip re-uploads later
+      if (originalFileName || originalFileId) {
+        try {
+          await (await import('./dbService')).linkUploadToVeo(mediaId, originalFileName, originalFileId);
+        } catch (e) {
+          console.warn('Failed to link upload record to veo media id:', e);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to log veo image to DB:', e);
+    }
+
+    return mediaId;
   }
+
   throw new Error("No mediaId returned from Google Upload");
 };
 
@@ -248,11 +268,24 @@ export const startVeoVideoGeneration = async (
   }
 
   const data = await response.json();
-  // Expecting data.responses[0].operation.name
-  const opName = data?.responses?.[0]?.operation?.name;
-  if (!opName) throw new Error("No operation name returned for video gen");
+  // Handle multiple response shapes:
+  // Legacy: data.responses[0].operation.name
+  // New: data.operations[0].operation.name and data.operations[0].sceneId
+  const opName = data?.responses?.[0]?.operation?.name || data?.operations?.[0]?.operation?.name;
+  const returnedSceneId = data?.operations?.[0]?.sceneId || sceneId;
 
-  return { operationName: opName, sceneId };
+  if (!opName) {
+    throw new Error("No operation name returned for video gen");
+  }
+
+  // Best-effort: persist the start response to DB (veo_video_tasks)
+  try {
+    await logVeoVideoTaskToDb(opName, returnedSceneId, data?.operations?.[0]?.status || null, data);
+  } catch (e) {
+    console.warn('Failed to log veo video task to DB:', e);
+  }
+
+  return { operationName: opName, sceneId: returnedSceneId };
 };
 
 /**
@@ -302,21 +335,37 @@ export const pollVeoVideoStatus = async (
     
     // Check for done
     // Success structure typically has `response` with `videoResult`
-    if (resultOp?.done) {
-       // Check for success data
-       const videoUri = resultOp?.response?.videoResult?.video?.uri;
-       if (videoUri) return videoUri;
+    // Persist status for this operation (best-effort)
+    try {
+      const opName = resultOp?.operation?.name || operationName;
+      const opSceneId = resultOp?.sceneId || sceneId;
+      const opStatus = resultOp?.status || (resultOp?.done ? 'MEDIA_GENERATION_STATUS_DONE' : null);
 
-       // Check for error
-       if (resultOp?.error) {
-         throw new Error(`Video Gen Failed: ${JSON.stringify(resultOp.error)}`);
-       }
-       
-       // Fallback
-       if (resultOp?.response) {
-         // Sometimes structure varies
-         return resultOp.response.videoResult?.video?.uri || "";
-       }
+      // If status indicates success, extract video URL(s) and serving/preview URI
+      let extractedUrl: string | null = null;
+      let servingBaseUri: string | null = null;
+      if (opStatus === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' || resultOp?.done) {
+        extractedUrl = resultOp?.response?.videoResult?.video?.uri
+          || resultOp?.response?.fifeUrl
+          || resultOp?.operation?.metadata?.video?.fifeUrl
+          || resultOp?.operation?.metadata?.video?.mediaUri
+          || null;
+
+        servingBaseUri = resultOp?.operation?.metadata?.video?.servingBaseUri
+          || resultOp?.response?.videoResult?.video?.servingBaseUri
+          || resultOp?.response?.servingBaseUri
+          || null;
+      }
+
+      await upsertVeoVideoTask(opName, opSceneId, opStatus, resultOp, extractedUrl, servingBaseUri);
+      // If the operation status is explicitly successful, stop polling and return URL (if available)
+      if (opStatus === 'MEDIA_GENERATION_STATUS_SUCCESSFUL') {
+        if (extractedUrl) return extractedUrl;
+        // If no URL found yet, return empty string to indicate success but no URL
+        return '';
+      }
+    } catch (e) {
+      console.warn('Failed to upsert veo video task status:', e);
     }
   }
   

@@ -1,7 +1,12 @@
 
-import React from 'react';
-import { ProcessedTask, TaskStatus } from '../types';
+import React, { useState } from 'react';
+import { ProcessedTask, TaskStatus, DbTaskRecord } from '../types';
 import { StatusBadge } from './StatusBadge';
+import { ImagePreviewModal } from './ImagePreviewModal';
+import { VideoPreviewModal } from './VideoPreviewModal';
+import { VideoGenerationModal } from './VideoGenerationModal';
+import { DEFAULT_API_TOKENS } from '../constants';
+import { useToast } from './ToastProvider';
 
 interface TaskListProps {
   tasks: ProcessedTask[];
@@ -9,6 +14,35 @@ interface TaskListProps {
 
 export const TaskList: React.FC<TaskListProps> = ({ tasks }) => {
   if (tasks.length === 0) return null;
+
+  const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
+  const [isVideoPreviewOpen, setIsVideoPreviewOpen] = useState(false);
+  const [selectedPreviewUrl, setSelectedPreviewUrl] = useState('');
+  const [selectedPreviewTitle, setSelectedPreviewTitle] = useState<string | undefined>(undefined);
+  // Video generation modal state (reuse existing media_id_video if present on task record)
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [selectedImageForVideo, setSelectedImageForVideo] = useState<string>('');
+  const [selectedSourceTask, setSelectedSourceTask] = useState<DbTaskRecord | undefined>(undefined);
+
+  const isVideoUrl = (url?: string) => {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return lower.includes('/video/') || lower.endsWith('.mp4') || lower.includes('videofx') || lower.includes('content-type=video');
+  };
+
+  const openImage = (url: string, title?: string) => { setSelectedPreviewUrl(url); setSelectedPreviewTitle(title); setIsImagePreviewOpen(true); };
+  const openVideo = (url: string, title?: string) => { setSelectedPreviewUrl(url); setSelectedPreviewTitle(title); setIsVideoPreviewOpen(true); };
+
+  const handleOpenVideoGen = (imageUrl: string | undefined, task?: ProcessedTask, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!imageUrl) return;
+    setSelectedImageForVideo(imageUrl);
+    // Attempt to pass through any media_id_video if the task already includes it (best-effort)
+    setSelectedSourceTask(task as unknown as DbTaskRecord);
+    const { addToast } = useToast();
+    addToast('Opening Veo3 video modal...', 'info');
+    setIsVideoModalOpen(true);
+  };
 
   return (
     <div className="mt-8">
@@ -50,18 +84,21 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks }) => {
                         {task.status === TaskStatus.COMPLETED && resultUrls.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-2">
                                 {resultUrls.map((url, idx) => (
-                                    <a 
-                                        key={idx}
-                                        href={url} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center px-3 py-1.5 bg-green-50 border border-green-100 rounded-md text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
+                                  <div key={idx} className="flex gap-2">
+                                    <button
+                                      onClick={() => isVideoUrl(url) ? openVideo(url, `Result ${idx+1}`) : openImage(url, `Result ${idx+1}`)}
+                                      className="inline-flex items-center px-3 py-1.5 bg-green-50 border border-green-100 rounded-md text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
                                     >
-                                        View Result {resultUrls.length > 1 ? idx + 1 : ''}
-                                        <svg className="w-3 h-3 ml-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                        </svg>
-                                    </a>
+                                      View Result {resultUrls.length > 1 ? idx + 1 : ''}
+                                    </button>
+                                    {/* Animate this result with Veo3 - best-effort reuse of media_id_video on task record */}
+                                    <button
+                                      onClick={(e) => handleOpenVideoGen(url, task, e)}
+                                      className="inline-flex items-center px-3 py-1.5 bg-purple-50 border border-purple-100 rounded-md text-xs font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                                    >
+                                      Animate
+                                    </button>
+                                  </div>
                                 ))}
                             </div>
                         )}
@@ -75,6 +112,17 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks }) => {
              );
           })}
         </ul>
+        {/* Preview Modals */}
+        <ImagePreviewModal isOpen={isImagePreviewOpen} onClose={() => setIsImagePreviewOpen(false)} imageUrl={selectedPreviewUrl} title={selectedPreviewTitle} />
+        <VideoPreviewModal isOpen={isVideoPreviewOpen} onClose={() => setIsVideoPreviewOpen(false)} videoUrl={selectedPreviewUrl} title={selectedPreviewTitle} />
+        {/* Video Generation Modal (reuse media_id_video when available) */}
+        <VideoGenerationModal
+          isOpen={isVideoModalOpen}
+          onClose={() => setIsVideoModalOpen(false)}
+          imageUrl={selectedImageForVideo}
+          tokens={DEFAULT_API_TOKENS}
+          sourceTask={selectedSourceTask}
+        />
       </div>
     </div>
   );

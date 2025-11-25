@@ -88,6 +88,7 @@ export interface DbTaskRecord {
   config: any;
   result_urls?: string; // Changed to string to match Postgres TEXT column (JSON stringified)
   error_message?: string | null;
+  media_id_video?: string | null; // Optional Google Labs mediaGenerationId if this task used a VEO image
 }
 
 export interface DbUploadRecord {
@@ -97,4 +98,26 @@ export interface DbUploadRecord {
   file_id?: string;
   upload_media_id?: string;
   file_url?: string; // Changed to matches Postgres TEXT column
+  media_id_video?: string | null; // Google Labs mediaGenerationId (if uploaded to VEO3)
+}
+
+export interface DbVeoImageRecord {
+  id?: number;
+  created_at?: string;
+  media_generation_id: string; // From Google Labs response
+  width?: number | null;
+  height?: number | null;
+  file_name?: string | null; // optional original filename if available
+  google_response?: any; // Raw JSON response stored as JSONB
+}
+
+export interface DbVeoVideoRecord {
+  id?: number;
+  created_at?: string;
+  operation_name: string; // operation.name returned by start video API
+  scene_id?: string | null; // sceneId associated with the operation
+  status?: string | null; // current status e.g., MEDIA_GENERATION_STATUS_PENDING
+  google_response?: any; // full JSON response stored as JSONB
+  video_url?: string | null; // extracted playable video URL when available
+  serving_base_uri?: string | null; // thumbnail/preview image for the video task
 }

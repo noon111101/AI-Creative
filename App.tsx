@@ -7,6 +7,7 @@ import { ProgressBar } from './components/ProgressBar';
 import { MediaGallery } from './components/MediaGallery';
 import { useBatchQueue } from './hooks/useBatchQueue';
 import { DEFAULT_API_TOKENS, INITIAL_JSON_TEMPLATE, VARIANT_OPTIONS } from './constants';
+import ToastProvider from './components/ToastProvider';
 import { GlobalBatchConfig } from './types';
 
 const App: React.FC = () => {
@@ -42,6 +43,7 @@ const App: React.FC = () => {
   };
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-5xl mx-auto">
         <Header />
@@ -179,6 +181,7 @@ const App: React.FC = () => {
         <MediaGallery refreshTrigger={galleryRefreshTrigger} />
       </div>
     </div>
+    </ToastProvider>
   );
 };
 

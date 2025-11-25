@@ -2,7 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { DbUploadRecord, DbTaskRecord } from '../types';
 import { fetchUploadHistory, fetchTaskHistory, deleteUploadRecord, deleteTaskRecord } from '../services/dbService';
+import { useToast } from './ToastProvider';
 import { VideoGenerationModal } from './VideoGenerationModal';
+import { ImagePreviewModal } from './ImagePreviewModal';
+import { VideoPreviewModal } from './VideoPreviewModal';
 import { DEFAULT_API_TOKENS } from '../constants';
 
 interface MediaGalleryProps {
@@ -41,11 +44,20 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
   const [activeTab, setActiveTab] = useState<'uploads' | 'history'>('uploads');
   const [uploads, setUploads] = useState<DbUploadRecord[]>([]);
   const [history, setHistory] = useState<DbTaskRecord[]>([]);
+  const [veoVideoTasks, setVeoVideoTasks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Video Generation Modal State
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [selectedImageForVideo, setSelectedImageForVideo] = useState<string>('');
+  const [selectedSourceUpload, setSelectedSourceUpload] = useState<DbUploadRecord | undefined>(undefined);
+  const [selectedSourceTask, setSelectedSourceTask] = useState<DbTaskRecord | undefined>(undefined);
+  // Preview modal state
+  const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
+  const [isVideoPreviewOpen, setIsVideoPreviewOpen] = useState(false);
+  const [selectedPreviewUrl, setSelectedPreviewUrl] = useState<string>('');
+  const [selectedPreviewTitle, setSelectedPreviewTitle] = useState<string | undefined>(undefined);
+  const { addToast } = useToast();
 
   useEffect(() => {
     loadData();
@@ -55,12 +67,15 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
     setIsLoading(true);
     try {
         // Load both to show counts, but prioritize update logic if needed
-        const [uploadsData, historyData] = await Promise.all([
+        const [uploadsData, historyData, veoVideoData] = await Promise.all([
             fetchUploadHistory(),
-            fetchTaskHistory()
+            fetchTaskHistory(),
+            // fetch veo video tasks for video generation history
+            (await import('../services/dbService')).fetchVeoVideoTasks()
         ]);
         setUploads(uploadsData);
         setHistory(historyData);
+        setVeoVideoTasks(veoVideoData || []);
     } catch (error) {
       console.error("Failed to load gallery data", error);
     } finally {
@@ -76,36 +91,72 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
 
   const handleDeleteUpload = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Are you sure you want to delete this uploaded media?')) return;
-    
-    // Optimistic update logic or wait for API
-    const success = await deleteUploadRecord(id);
-    if (success) {
-        setUploads(prev => prev.filter(item => item.id !== id));
-    } else {
-        alert('Failed to delete media');
+    // Delete without confirmation (immediate)
+    try {
+      console.log('Requesting delete for upload id (no confirm):', id);
+      const success = await deleteUploadRecord(id);
+      console.log('deleteUploadRecord returned:', success);
+      if (success) {
+        const refreshed = await fetchUploadHistory();
+        setUploads(refreshed);
+        addToast('Upload deleted', 'success');
+      } else {
+        console.warn('Failed to delete upload (see console for details)');
+        addToast('Failed to delete upload', 'error');
+      }
+    } catch (err) {
+      console.error('Unhandled error deleting upload:', err);
+      addToast('Error deleting upload', 'error');
     }
   };
 
   const handleDeleteTask = async (id: number | undefined, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!id) return;
-    if (!window.confirm('Are you sure you want to delete this task history?')) return;
 
-    const success = await deleteTaskRecord(id);
-    if (success) {
-        setHistory(prev => prev.filter(item => item.id !== id));
-    } else {
-        alert('Failed to delete task history');
+    try {
+      console.log('Requesting delete for task id (no confirm):', id);
+      const success = await deleteTaskRecord(id);
+      console.log('deleteTaskRecord returned:', success);
+      if (success) {
+        // Re-fetch history from DB to ensure UI matches DB state
+        const refreshed = await fetchTaskHistory();
+        setHistory(refreshed);
+        addToast('Task history deleted', 'success');
+      } else {
+        console.warn('Failed to delete task history (see console for details)');
+        addToast('Failed to delete task history (check permissions)', 'error');
+      }
+    } catch (err) {
+      console.error('Unhandled error deleting task:', err);
+      addToast('Error deleting task history', 'error');
     }
   };
 
-  const handleOpenVideoGen = (imageUrl: string | undefined, e: React.MouseEvent) => {
-      e.stopPropagation();
+    const handleOpenVideoGen = (imageUrl: string | undefined, sourceUpload?: DbUploadRecord, sourceTask?: DbTaskRecord, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
       if (!imageUrl) return;
       setSelectedImageForVideo(imageUrl);
+      setSelectedSourceUpload(sourceUpload);
+      setSelectedSourceTask(sourceTask);
       setIsVideoModalOpen(true);
-  };
+    };
+
+    const handleOpenImagePreview = (url?: string, title?: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      if (!url) return;
+      setSelectedPreviewUrl(url);
+      setSelectedPreviewTitle(title);
+      setIsImagePreviewOpen(true);
+    };
+
+    const handleOpenVideoPreview = (url?: string, title?: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      if (!url) return;
+      setSelectedPreviewUrl(url);
+      setSelectedPreviewTitle(title);
+      setIsVideoPreviewOpen(true);
+    };
 
   const TabButton = ({ id, label, count }: { id: 'uploads' | 'history', label: string, count?: number }) => (
     <button
@@ -124,6 +175,12 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
       )}
     </button>
   );
+
+  const isVideoUrl = (url?: string) => {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return lower.includes('/video/') || lower.endsWith('.mp4') || lower.includes('videofx') || lower.includes('content-type=video');
+  };
 
   return (
     <>
@@ -160,17 +217,19 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
                   <div key={item.id} className="group relative aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200 hover:shadow-lg transition-all duration-300">
                     
                     {/* Hien thi anh dua tren URL */}
-                    <ImageWithFallback 
-                        src={item.file_url || ''} 
-                        alt={item.file_name} 
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                    />
+                    <div onClick={(e) => handleOpenImagePreview(item.file_url, item.file_name, e)}>
+                      <ImageWithFallback 
+                          src={item.file_url || ''} 
+                          alt={item.file_name} 
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                      />
+                    </div>
                     
                     {/* Actions - Visible on Hover */}
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex flex-col gap-2">
                          {/* Generate Video Button */}
                          <button 
-                            onClick={(e) => handleOpenVideoGen(item.file_url, e)}
+                           onClick={(e) => handleOpenVideoGen(item.file_url, item, undefined, e)}
                             className="bg-white/90 hover:bg-purple-50 text-gray-500 hover:text-purple-600 p-1.5 rounded-full shadow-sm transition-colors border border-transparent hover:border-purple-100"
                             title="Generate Video (Veo3)"
                         >
@@ -214,7 +273,38 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
 
             {/* Generation History Grid */}
             {activeTab === 'history' && (
-              <div className="space-y-4 animate-fadeIn">
+              <div className="space-y-6 animate-fadeIn">
+                {/* VEO Video Tasks (separate from sora_tasks) */}
+                {veoVideoTasks.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Video Generation History</h4>
+                    <div className="grid gap-3">
+                      {veoVideoTasks.map((vt: any) => (
+                        <div key={vt.id} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex items-center justify-between gap-4">
+                          <div className="w-36 h-20 flex-shrink-0 rounded overflow-hidden bg-gray-50 border">
+                            {vt.serving_base_uri ? (
+                              <img src={vt.serving_base_uri} alt={vt.operation_name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">No preview</div>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-xs text-gray-500 font-mono">{new Date(vt.created_at || '').toLocaleString()}</div>
+                            <div className="text-sm font-medium text-gray-800 truncate">{vt.operation_name}</div>
+                            <div className="text-xs text-gray-500 mt-1">Status: {vt.status || 'UNKNOWN'}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {vt.video_url ? (
+                              <button onClick={(e) => { e.stopPropagation(); setSelectedPreviewUrl(vt.video_url); setSelectedPreviewTitle(vt.operation_name); setIsVideoPreviewOpen(true); }} className="px-3 py-1 text-xs bg-indigo-50 text-indigo-700 rounded">Play</button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Existing sora_tasks history */}
+                <div>
                 {history.length === 0 && (
                    <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
                      <p>No generation tasks recorded yet.</p>
@@ -263,31 +353,42 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
                         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3 mt-3">
                            {urls.map((url, idx) => (
                              <div key={idx} className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden group shadow-sm border border-gray-200">
-                                <div className="absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="absolute top-1 right-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                                      <button 
-                                        onClick={(e) => handleOpenVideoGen(url, e)}
-                                        className="bg-white/90 text-purple-600 p-1 rounded-full shadow hover:bg-purple-50"
-                                        title="Animate this image (Veo3)"
+                                       onClick={(e) => handleOpenVideoGen(url, undefined, task, e)}
+                                       className="bg-white/90 text-purple-600 p-1 rounded-full shadow hover:bg-purple-50"
+                                       title="Animate this image (Veo3)"
                                      >
                                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                          </svg>
                                      </button>
+                                     {isVideoUrl(url) && (
+                                       <button
+                                         onClick={(e) => handleOpenVideoPreview(url, `Preview ${idx+1}`, e)}
+                                         className="bg-white/90 text-indigo-600 p-1 rounded-full shadow hover:bg-indigo-50"
+                                         title="Preview Video"
+                                       >
+                                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                           <path d="M8 5v14l11-7z" />
+                                         </svg>
+                                       </button>
+                                     )}
                                 </div>
                                 
-                                <a href={url} target="_blank" rel="noopener noreferrer">
-                                    <ImageWithFallback 
-                                        src={url} 
-                                        alt={`Result ${idx}`} 
-                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                                    />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                        <svg className="w-8 h-8 text-white drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                        </svg>
-                                    </div>
-                                </a>
+                                <div onClick={(e) => handleOpenImagePreview(url, `Result ${idx+1}`, e)}>
+                                  <ImageWithFallback 
+                                    src={url} 
+                                    alt={`Result ${idx}`} 
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                    <svg className="w-8 h-8 text-white drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                  </div>
+                                </div>
                              </div>
                            ))}
                         </div>
@@ -299,6 +400,7 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
                     </div>
                   );
                 })}
+                </div>
               </div>
             )}
           </>
@@ -311,6 +413,20 @@ export const MediaGallery: React.FC<MediaGalleryProps> = ({ refreshTrigger }) =>
         onClose={() => setIsVideoModalOpen(false)}
         imageUrl={selectedImageForVideo}
         tokens={DEFAULT_API_TOKENS}
+        sourceUpload={selectedSourceUpload}
+        sourceTask={selectedSourceTask}
+      />
+      <ImagePreviewModal
+        isOpen={isImagePreviewOpen}
+        onClose={() => setIsImagePreviewOpen(false)}
+        imageUrl={selectedPreviewUrl}
+        title={selectedPreviewTitle}
+      />
+      <VideoPreviewModal
+        isOpen={isVideoPreviewOpen}
+        onClose={() => setIsVideoPreviewOpen(false)}
+        videoUrl={selectedPreviewUrl}
+        title={selectedPreviewTitle}
       />
     </div>
     </>

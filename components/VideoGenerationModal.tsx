@@ -1,13 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { uploadImageToGoogleLabs, startVeoVideoGeneration, pollVeoVideoStatus } from '../services/apiService';
-import { ApiTokens } from '../types';
+import { ApiTokens, DbUploadRecord, DbTaskRecord } from '../types';
+import { useToast } from './ToastProvider';
 
 interface VideoGenerationModalProps {
   isOpen: boolean;
   onClose: () => void;
   imageUrl: string;
   tokens: ApiTokens;
+  // optional source records so we can skip re-upload when a media_id_video already exists
+  sourceUpload?: DbUploadRecord | null;
+  sourceTask?: DbTaskRecord | null;
 }
 
 // Helper to convert any image URL to a clean JPEG Base64 string
@@ -53,6 +57,7 @@ export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({
   onClose, 
   imageUrl, 
   tokens 
+  , sourceUpload, sourceTask
 }) => {
   const [prompt, setPrompt] = useState("A cinematic video...");
   const [status, setStatus] = useState<'idle' | 'uploading' | 'generating' | 'polling' | 'completed' | 'failed'>('idle');
@@ -83,17 +88,55 @@ export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({
         setStatus('uploading');
         setStatusMsg('Processing image (converting to JPEG)...');
         
-        // Convert the image to a standardized JPEG Base64 string
-        // This handles format conversion and ensures valid base64 for the API
-        const jpegBase64 = await convertImageToJpegBase64(imageUrl);
+        const { addToast } = useToast();
 
-        setStatusMsg('Uploading to Veo3...');
-        // Upload (always as image/jpeg)
-        const mediaId = await uploadImageToGoogleLabs(jpegBase64, tokens.googleToken);
+        let mediaId: string | null = null;
+
+        // If caller provided an existing media ID on either the upload or task record, reuse it.
+        if (sourceUpload?.media_id_video) {
+          mediaId = sourceUpload.media_id_video;
+        } else if (sourceTask?.media_id_video) {
+          mediaId = sourceTask.media_id_video;
+        } else {
+          // If we only have an image URL, try a best-effort DB lookup to find a matching upload record
+          try {
+            const { findMediaIdByFileUrl } = await import('../services/dbService');
+            const found = await findMediaIdByFileUrl(imageUrl);
+                if (found) {
+                  mediaId = found;
+                }
+          } catch (e) {
+            // ignore lookup failures and continue to upload path
+            console.warn('Failed to lookup media_id_video by file URL:', e);
+          }
+        }
+
+        // If no existing mediaId, convert + upload
+        if (!mediaId) {
+              addToast('Uploading image to Veo3...', 'info');
+          // Convert the image to a standardized JPEG Base64 string
+          // This handles format conversion and ensures valid base64 for the API
+          const jpegBase64 = await convertImageToJpegBase64(imageUrl);
+
+          setStatusMsg('Uploading to Veo3...');
+          // Upload (always as image/jpeg)
+              try {
+                mediaId = await uploadImageToGoogleLabs(jpegBase64, tokens.googleToken, sourceUpload?.file_name, sourceUpload?.file_id);
+                addToast('Image uploaded to Veo3', 'success');
+              } catch (err: any) {
+                console.error('Upload failed:', err);
+                addToast('Image upload failed', 'error');
+                throw err;
+              }
+        } else {
+              setStatusMsg('Using existing Veo media ID, skipping upload...');
+              addToast('Using existing Veo media ID, skipping upload', 'info');
+        }
         
         // 2. Start Generation
         setStatus('generating');
         setStatusMsg('Initializing video generation task...');
+        addToast('Starting video generation...', 'info');
         const { operationName, sceneId } = await startVeoVideoGeneration(prompt, mediaId, tokens.googleToken);
 
         // 3. Poll
@@ -104,6 +147,11 @@ export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({
             tokens.googleToken, 
             (msg) => setStatusMsg(msg)
         );
+        if (videoUrl) {
+          addToast('Video generation complete', 'success');
+        } else {
+          addToast('Video generation completed (no URL returned)', 'warning');
+        }
 
         setResultVideoUrl(videoUrl);
         setStatus('completed');
