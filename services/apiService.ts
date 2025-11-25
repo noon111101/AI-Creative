@@ -163,7 +163,7 @@ export const uploadImageToGoogleLabs = async (base64Data: string, mimeType: stri
   const payload = {
     imageInput: {
       rawImageBytes: rawBase64,
-      mimeType: mimeType,
+      mimeType: "image/jpeg", // Forced to match curl working example
       isUserUploaded: true,
       aspectRatio: "IMAGE_ASPECT_RATIO_LANDSCAPE"
     },
@@ -177,7 +177,7 @@ export const uploadImageToGoogleLabs = async (base64Data: string, mimeType: stri
     method: 'POST',
     headers: {
       'authorization': `Bearer ${googleToken}`,
-      'content-type': 'text/plain;charset=UTF-8',
+      'content-type': 'text/plain;charset=UTF-8', // Important: Google Labs uses this for JSON payload sometimes
       'accept': '*/*'
     },
     body: JSON.stringify(payload)
@@ -185,7 +185,7 @@ export const uploadImageToGoogleLabs = async (base64Data: string, mimeType: stri
 
   if (!response.ok) {
     const txt = await response.text();
-    throw new Error(`Google Upload Failed: ${txt}`);
+    throw new Error(`Google Upload Failed (${response.status}): ${txt}`);
   }
 
   const data = await response.json();
