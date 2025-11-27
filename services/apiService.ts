@@ -5,6 +5,7 @@ import {
   UPLOAD_API_URL,
   GOOGLE_UPLOAD_URL,
   GOOGLE_GEN_VIDEO_URL,
+  GOOGLE_GEN_VIDEO_STARTEND_URL,
   GOOGLE_CHECK_STATUS_URL,
   POLLING_INTERVAL_MS, 
   MAX_POLLING_ATTEMPTS 
@@ -55,6 +56,35 @@ export const submitGenerationTask = async (payload: BatchInputItem, tokens?: Api
   } catch (error) {
     console.error("Submit Generation Error:", error);
     throw error;
+  }
+};
+
+/**
+ * Submits a storyboard-style generation request.
+ * Expects `scenes` to be an array of objects like { prompt, upload_media_id }
+ */
+export const createStoryboardGeneration = async (scenes: any[], tokens?: ApiTokens): Promise<any> => {
+  try {
+    const payload = {
+      is_storyboard: true,
+      scenes
+    };
+
+    const response = await fetch(GEN_API_URL, {
+      method: 'POST',
+      headers: getHeaders(tokens, true),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const txt = await response.text();
+      throw new Error(`Storyboard generation failed: ${txt}`);
+    }
+
+    return await response.json();
+  } catch (err) {
+    console.error('createStoryboardGeneration error:', err);
+    throw err;
   }
 };
 
@@ -283,6 +313,77 @@ export const startVeoVideoGeneration = async (
     await logVeoVideoTaskToDb(opName, returnedSceneId, data?.operations?.[0]?.status || null, data);
   } catch (e) {
     console.warn('Failed to log veo video task to DB:', e);
+  }
+
+  return { operationName: opName, sceneId: returnedSceneId };
+};
+
+/**
+ * Starts the Veo3 video generation task using a start AND end image.
+ * Uses the Google Labs start+end endpoint which accepts both `startImage` and `endImage`.
+ * Returns { operationName, sceneId } similar to startVeoVideoGeneration.
+ */
+export const startVeoStartEndVideoGeneration = async (
+  prompt: string,
+  startMediaId: string,
+  endMediaId: string,
+  googleToken: string,
+  options?: {
+    projectId?: string;
+    tool?: string;
+    userPaygateTier?: string;
+    videoModelKey?: string;
+  }
+): Promise<{ operationName: string, sceneId: string }> => {
+  const sceneId = crypto.randomUUID();
+
+  const payload = {
+    clientContext: {
+      sessionId: `;${Date.now()}`,
+      projectId: options?.projectId || "85365437-6840-4ef3-be73-8e59e41f767a",
+      tool: options?.tool || "PINHOLE",
+      userPaygateTier: options?.userPaygateTier || "PAYGATE_TIER_TWO"
+    },
+    requests: [
+      {
+        aspectRatio: "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        seed: Math.floor(Math.random() * 100000),
+        textInput: { prompt },
+        videoModelKey: "veo_3_1_i2v_s_fast_ultra_fl",
+        startImage: { mediaId: startMediaId },
+        endImage: { mediaId: endMediaId },
+        metadata: { sceneId }
+      }
+    ]
+  };
+
+  const response = await fetch(GOOGLE_GEN_VIDEO_STARTEND_URL, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${googleToken}`,
+      'content-type': 'text/plain;charset=UTF-8',
+      'accept': '*/*'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error(`Start+End Video Gen Failed: ${txt}`);
+  }
+
+  const data = await response.json();
+  const opName = data?.responses?.[0]?.operation?.name || data?.operations?.[0]?.operation?.name;
+  const returnedSceneId = data?.operations?.[0]?.sceneId || sceneId;
+
+  if (!opName) {
+    throw new Error("No operation name returned for start+end video gen");
+  }
+
+  try {
+    await logVeoVideoTaskToDb(opName, returnedSceneId, data?.operations?.[0]?.status || null, data);
+  } catch (e) {
+    console.warn('Failed to log veo video task to DB (start+end):', e);
   }
 
   return { operationName: opName, sceneId: returnedSceneId };

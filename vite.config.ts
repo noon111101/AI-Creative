@@ -58,17 +58,17 @@ export default defineConfig({
           });
 
           // Handle Response to prevent CORS issues on Localhost
-          proxy.on('proxyRes', (proxyRes, req, res) => {
-            // Strip upstream CORS headers to avoid conflicts
-            delete proxyRes.headers['access-control-allow-origin'];
-            delete proxyRes.headers['access-control-allow-methods'];
-            delete proxyRes.headers['access-control-allow-headers'];
+          // proxy.on('proxyRes', (proxyRes, req, res) => {
+          //   // Strip upstream CORS headers to avoid conflicts
+          //   delete proxyRes.headers['access-control-allow-origin'];
+          //   delete proxyRes.headers['access-control-allow-methods'];
+          //   delete proxyRes.headers['access-control-allow-headers'];
 
-            // Add permissive CORS headers for Localhost
-            proxyRes.headers['access-control-allow-origin'] = '*';
-            proxyRes.headers['access-control-allow-methods'] = 'GET, POST, OPTIONS, PUT, DELETE, PATCH';
-            proxyRes.headers['access-control-allow-headers'] = '*';
-          });
+          //   // Add permissive CORS headers for Localhost
+          //   proxyRes.headers['access-control-allow-origin'] = '*';
+          //   proxyRes.headers['access-control-allow-methods'] = 'GET, POST, OPTIONS, PUT, DELETE, PATCH';
+          //   proxyRes.headers['access-control-allow-headers'] = '*';
+          // });
         }
       }
     }

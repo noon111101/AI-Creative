@@ -29,6 +29,8 @@ export const UPLOAD_API_URL = `${API_BASE}/uploads`;
 // Google Labs API Endpoints (Proxied via /v1 in vite.config.ts)
 export const GOOGLE_UPLOAD_URL = '/v1:uploadUserImage';
 export const GOOGLE_GEN_VIDEO_URL = '/v1/video:batchAsyncGenerateVideoStartImage';
+// Endpoint that supports both start and end images for start+end frame generation
+export const GOOGLE_GEN_VIDEO_STARTEND_URL = '/v1/video:batchAsyncGenerateVideoStartAndEndImage';
 export const GOOGLE_CHECK_STATUS_URL = '/v1/video:batchCheckAsyncVideoGenerationStatus';
 
 export const POLLING_INTERVAL_MS = 8000;
