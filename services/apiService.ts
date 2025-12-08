@@ -333,22 +333,23 @@ export const uploadImageToGoogleLabs = async (
   }
 
   const data = await response.json();
-  // Support new and legacy response shapes for image upload:
-  // New: { mediaGenerationId: { mediaGenerationId: "..." }, width, height }
-  // Legacy: { imageResult: { mediaId: "..." } }
+  console.log('Google Upload Response:', data);
   const mediaId = data?.mediaGenerationId?.mediaGenerationId || data?.imageResult?.mediaId;
   if (mediaId) {
     // Best-effort: persist veo image metadata into Supabase
     try {
-      await logVeoImageToDb(mediaId, data?.width ?? null, data?.height ?? null, undefined, data, type);
-      // If caller provided the original upload identifier, link the sora_uploads row so we can skip re-uploads later
-      if (originalFileName || originalFileId) {
-        try {
-          await (await import('./dbService')).linkUploadToVeo(mediaId, originalFileName, originalFileId);
-        } catch (e) {
-          console.warn('Failed to link upload record to veo media id:', e);
-        }
+      // Fetch file_url từ API fetchVeo3ImageResult
+      let fileUrl: string | null = null;
+      try {
+        const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;;
+        const imgRes = await fetchVeo3ImageResult(mediaId, googleToken);
+        console.log('Fetched Veo3 image recsult for logging:', imgRes);
+        fileUrl = imgRes?.image?.fifeUrl || imgRes?.media?.[0]?.image?.fifeUrl || imgRes?.userUploadedImage?.fifeUrl || null;
+        console.log('Extracted fileUrl for veo image:', fileUrl);
+      } catch (e) {
+        console.warn('Failed to fetch Veo3 image result for fileUrl extraction', e);
       }
+      await logVeoImageToDb(mediaId, data?.width ?? null, data?.height ?? null, originalFileName, data, type, fileUrl);  
     } catch (e) {
       console.warn('Failed to log veo image to DB:', e);
     }

@@ -84,43 +84,12 @@ export default function BatchInputTable() {
     setUploading(false);
   };
 
-  // Hàm lấy lại URL mới từ ID
-  const handlePreview = async (row: BatchRow) => {
-    if (!row.referenceImageId) return;
-    setPreviewTitle(row.imagePrompt || 'Preview');
-    try {
-      // Lấy token từ biến môi trường
-      const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
-      // Gọi API lấy lại thông tin ảnh
-      const resp = await fetchVeo3ImageResult(row.referenceImageId, googleToken);
-      // Lưu kết quả vào bảng veo_image_tasks
-      const fifeUrl = resp?.userUploadedImage?.fifeUrl || resp?.media?.[0]?.image?.generatedImage?.fifeUrl || resp?.image?.fifeUrl || null;
-      await logVeoImageTaskToDb(
-        row.referenceImageId,
-        row.imagePrompt || '',
-        null,
-        fifeUrl,
-        resp
-      );
-      // Ưu tiên lấy fifeUrl từ userUploadedImage nếu có
-      if (fifeUrl) {
-        setPreviewType('image');
-        setPreviewUrl(fifeUrl);
-        setPreviewOpen(true);
-      } else if (resp?.media?.[0]?.video?.generatedVideo?.videoUrl) {
-        setPreviewType('video');
-        setPreviewUrl(resp.media[0].video.generatedVideo.videoUrl);
-        setPreviewOpen(true);
-      } else {
-        alert('Không tìm thấy URL preview hợp lệ!');
-      }
-    } catch (err) {
-      alert('Lỗi lấy preview: ' + (err?.message || err));
-    }
-  };
 
   useEffect(() => {
-    fetchVeoImages().then(setVeoImages);
+    fetchVeoImages().then(data => {
+      console.log('fetchVeoImages result:', data);
+      setVeoImages(data);
+    });
   }, []);
 
   const handleChange = (idx: number, field: keyof BatchRow, value: any) => {
@@ -136,16 +105,29 @@ export default function BatchInputTable() {
   const handlePaste = () => {
     const text = pasteRef.current?.value || '';
     if (!text.trim()) return;
-    const lines = text.trim().split(/\r?\n/);
-    const newRows: BatchRow[] = lines.map(line => {
-      // Try tab, then comma, then semicolon
-      const parts = line.split(/\t|,|;/);
-      return {
-        imagePrompt: parts[0] || '',
-        referenceImageId: parts[1] || '',
-        videoPrompt: parts[2] || '',
-      };
-    });
+    let newRows: BatchRow[] = [];
+    // Nếu là JSON array, parse luôn
+    try {
+      const json = JSON.parse(text);
+      if (Array.isArray(json)) {
+        newRows = json.map(obj => ({
+          imagePrompt: obj.propmtImage || obj.promptImage || '',
+          referenceImageId: Array.isArray(obj.reference) ? obj.reference.join(',') : (obj.reference || ''),
+          videoPrompt: obj.promptVideo || '',
+        }));
+      }
+    } catch {
+      // Nếu không phải JSON, xử lý như cũ
+      const lines = text.trim().split(/\r?\n/);
+      newRows = lines.map(line => {
+        const parts = line.split(/\t|,|;/);
+        return {
+          imagePrompt: parts[0] || '',
+          referenceImageId: parts[1] || '',
+          videoPrompt: parts[2] || '',
+        };
+      });
+    }
     setRows([...rows, ...newRows]);
     setShowPaste(false);
     if (pasteRef.current) pasteRef.current.value = '';
@@ -270,7 +252,12 @@ export default function BatchInputTable() {
       </div>
       {showPaste && (
         <div className="mb-6">
-          <textarea ref={pasteRef} rows={4} className="w-full border border-brand-200 rounded-lg p-3 mb-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-300" placeholder="Prompt ảnh[TAB]ID ảnh tham chiếu[TAB]Prompt video\nMỗi dòng 1 batch, phân tách bằng tab hoặc dấu phẩy."></textarea>
+          <textarea
+            ref={pasteRef}
+            rows={6}
+            className="w-full border border-brand-200 rounded-lg p-3 mb-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
+            placeholder={`Prompt ảnh[TAB]ID ảnh tham chiếu[TAB]Prompt video\nMỗi dòng 1 batch, phân tách bằng tab hoặc dấu phẩy.\nHoặc paste JSON:\n[\n  {\n    \"propmtImage\": \"Prompt ảnh\",\n    \"reference\": [\"id1\", \"id2\"],\n    \"promptVideo\": \"Prompt video\"\n  }\n]`}
+          />
           <button onClick={handlePaste} className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition">Thêm từ clipboard</button>
         </div>
       )}
@@ -317,7 +304,7 @@ export default function BatchInputTable() {
                             className="absolute top-1 left-1 z-10 w-4 h-4"
                           />
                           <img
-                            src={img.google_response?.image?.fifeUrl || img.google_response?.userUploadedImage?.fifeUrl || ''}
+                            src={img.file_url || ''}
                             alt={img.file_name || img.media_generation_id}
                             className={`w-16 h-16 object-cover rounded-lg border ${checked ? 'border-blue-600 ring-2 ring-blue-400' : 'border-gray-300'}`}
                             style={{ filter: checked ? 'brightness(0.85)' : 'none' }}
@@ -337,11 +324,6 @@ export default function BatchInputTable() {
                   />
                 </td>
                 <td className="px-4 py-2 align-middle text-center flex gap-2 justify-center">
-                  <button
-                    onClick={() => handlePreview(row)}
-                    className="px-3 py-1 rounded bg-blue-500 text-white font-semibold shadow hover:bg-blue-600 transition"
-                    disabled={!row.referenceImageId || submitting}
-                  >Preview</button>
                   {rows.length > 1 && (
                     <button onClick={() => removeRow(idx)} disabled={submitting} className="text-red-600 hover:underline font-semibold">Xóa</button>
                   )}

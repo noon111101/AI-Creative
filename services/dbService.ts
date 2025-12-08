@@ -129,36 +129,6 @@ export const logUploadToDb = async (fileName: string, response: UploadResponse, 
   }
 };
 
-/**
- * Link an existing `sora_uploads` row to a VEO media generation id.
- * Provide either `fileId` or `fileName` to find the upload record.
- */
-export const linkUploadToVeo = async (mediaIdVideo: string, fileName?: string, fileId?: string): Promise<void> => {
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    console.warn('⚠️ No Supabase client available, skipping linkUploadToVeo.');
-    return;
-  }
-
-  if (!fileId && !fileName) {
-    console.warn('⚠️ linkUploadToVeo requires fileId or fileName');
-    return;
-  }
-
-  let query = supabase.from('sora_uploads').update({ media_id_video: mediaIdVideo }).limit(1);
-  if (fileId) {
-    query = query.eq('file_id', fileId);
-  } else if (fileName) {
-    query = query.eq('file_name', fileName);
-  }
-
-  const { error, count } = await query;
-  if (error) {
-    console.error('❌ Error linking upload to veo media id:', error);
-  } else {
-    console.log('✅ Linked upload to veo media id:', mediaIdVideo);
-  }
-};
 
 /**
  * Logs a completed or failed task to Supabase
@@ -344,7 +314,9 @@ export const logVeoImageToDb = async (
   width?: number | null,
   height?: number | null,
   fileName?: string | null,
-  rawResponse?: any
+  rawResponse?: any,
+  type?: string | null,
+  fileUrl?: string | null
 ): Promise<void> => {
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -357,7 +329,9 @@ export const logVeoImageToDb = async (
     width: width ?? null,
     height: height ?? null,
     file_name: fileName ?? null,
-    google_response: rawResponse ?? null
+    google_response: rawResponse ?? null,
+    type: type ?? null,
+    file_url: fileUrl ?? null
   };
 
   const { error } = await supabase.from('veo_images').insert([record]);

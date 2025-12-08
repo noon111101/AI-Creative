@@ -102,13 +102,13 @@ export interface DbUploadRecord {
 }
 
 export interface DbVeoImageRecord {
-  id?: number;
-  created_at?: string;
-  media_generation_id: string; // From Google Labs response
+  media_generation_id: string;
   width?: number | null;
   height?: number | null;
-  file_name?: string | null; // optional original filename if available
-  google_response?: any; // Raw JSON response stored as JSONB
+  file_name?: string | null;
+  google_response?: any;
+  type?: string | null;
+  file_url?: string | null;
 }
 
 export interface DbVeoVideoRecord {
