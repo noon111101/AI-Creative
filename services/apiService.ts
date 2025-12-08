@@ -1,4 +1,102 @@
 
+// Payload chuẩn cho batchGenerateImages Google Labs
+export interface Veo3GenerateImageRequest {
+  clientContext: {
+    sessionId: string;
+  };
+  seed: number;
+  imageModelName: string;
+  imageAspectRatio: string;
+  prompt: string;
+  imageInputs: Array<{
+    name: string; // mediaId của ảnh đã upload
+    imageInputType: "IMAGE_INPUT_TYPE_REFERENCE";
+  }>;
+}
+
+
+/**
+ * Generate Veo3 image (batchGenerateImages) with standardized payload
+ * Accepts prompt, referenceImageId, and optional params
+ */
+export const generateVeo3Image = async (
+  {
+    prompt,
+    referenceImageId,
+    sessionId = ';' + Date.now(),
+    seed = Math.floor(Math.random() * 1000000),
+    imageModelName = 'GEM_PIX_2',
+    imageAspectRatio = 'IMAGE_ASPECT_RATIO_LANDSCAPE',
+  }: {
+    prompt: string;
+    referenceImageId?: string;
+    sessionId?: string;
+    seed?: number;
+    imageModelName?: string;
+    imageAspectRatio?: string;
+  },
+  googleToken: string
+): Promise<any> => {
+  const payload: Veo3GenerateImageRequest = {
+    clientContext: {
+      sessionId,
+    },
+    seed,
+    imageModelName,
+    imageAspectRatio,
+    prompt,
+    imageInputs: referenceImageId
+      ? [{
+          name: referenceImageId,
+          imageInputType: "IMAGE_INPUT_TYPE_REFERENCE",
+        }]
+      : [],
+  };
+  const url = '/v1/projects/95f518c7-51a3-4b42-a44a-c8e62538fdeb/flowMedia:batchGenerateImages';
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'accept': '*/*',
+      'authorization': `Bearer ${googleToken}`,
+      'content-type': 'text/plain;charset=UTF-8',
+      'origin': 'https://labs.google',
+      'referer': 'https://labs.google/',
+    },
+    body: JSON.stringify({ requests: [payload] })
+  });
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error(`Veo3 image generation failed: ${txt}`);
+  }
+  return await response.json();
+};
+
+/**
+ * Fetches the result of a generated Veo3 image by mediaGenerationId
+ * Returns the raw response (including fifeUrl, etc)
+ */
+export const fetchVeo3ImageResult = async (
+  mediaGenerationId: string,
+  googleToken: string
+): Promise<any> => {
+  let url = `/v1/media/${mediaGenerationId}`;
+  url += `?key=AIzaSyBtrm0o5ab1c-Ec8ZuLcGt3oJAA5VWt3pY&clientContext.tool=PINHOLE`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'accept': '*/*',
+      'authorization': `Bearer ${googleToken}`,
+      'origin': 'https://labs.google',
+      'referer': 'https://labs.google/',
+    }
+  });
+  if (!response.ok) {
+    const txt = await response.text();
+    throw new Error(`Veo3 image fetch failed: ${txt}`);
+  }
+  return await response.json();
+};
+
 import { 
   GEN_API_URL, 
   STATUS_API_URL, 
@@ -187,7 +285,16 @@ export const uploadFile = async (file: File, customName?: string, tokens?: ApiTo
 /**
  * Uploads an image (as base64) to Google Labs for video generation
  */
-export const uploadImageToGoogleLabs = async (jpegBase64: string, googleToken: string, originalFileName?: string, originalFileId?: string): Promise<string> => {
+/**
+ * @param type string: 'reference' | 'ai' | 'flow'
+ */
+export const uploadImageToGoogleLabs = async (
+  jpegBase64: string,
+  googleToken: string,
+  originalFileName?: string,
+  originalFileId?: string,
+  type?: 'reference' | 'ai' | 'flow'
+): Promise<string> => {
   // Ensure we have raw base64 (remove data:image/jpeg;base64, prefix if present)
   const rawBase64 = jpegBase64.includes(',') ? jpegBase64.split(',')[1] : jpegBase64;
 
@@ -233,7 +340,7 @@ export const uploadImageToGoogleLabs = async (jpegBase64: string, googleToken: s
   if (mediaId) {
     // Best-effort: persist veo image metadata into Supabase
     try {
-      await logVeoImageToDb(mediaId, data?.width ?? null, data?.height ?? null, undefined, data);
+      await logVeoImageToDb(mediaId, data?.width ?? null, data?.height ?? null, undefined, data, type);
       // If caller provided the original upload identifier, link the sora_uploads row so we can skip re-uploads later
       if (originalFileName || originalFileId) {
         try {

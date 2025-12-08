@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import SoraUI from './components/SoraUI';
 import StoryboardEditor from './components/StoryboardEditor';
+import BatchPage from './components/BatchPage';
 
 const App: React.FC = () => {
-  const [active, setActive] = useState<'sora' | 'flow'>('sora');
+  const [active, setActive] = useState<'flow' | 'batch'>('batch');
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-10 px-4 sm:px-6 lg:px-8 font-sans">
@@ -15,22 +16,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="inline-flex items-center rounded-lg bg-white shadow-sm p-1.5 border border-gray-100">
-            <button
-              onClick={() => setActive('sora')}
-              aria-pressed={active === 'sora'}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none ${
-                active === 'sora'
-                  ? 'bg-brand-600 text-white shadow-md'
-                  : 'text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 12h18" stroke={active === 'sora' ? 'white' : '#374151'} strokeWidth="2" strokeLinecap="round" />
-                <path d="M3 6h12" stroke={active === 'sora' ? 'white' : '#9CA3AF'} strokeWidth="2" strokeLinecap="round" />
-              </svg>
-              SORA
-            </button>
-
             <button
               onClick={() => setActive('flow')}
               aria-pressed={active === 'flow'}
@@ -46,20 +31,32 @@ const App: React.FC = () => {
               </svg>
               FLOW
             </button>
+            <button
+              onClick={() => setActive('batch')}
+              aria-pressed={active === 'batch'}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none ${
+                active === 'batch'
+                  ? 'bg-brand-600 text-white shadow-md'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="5" y="5" width="14" height="14" rx="3" stroke={active === 'batch' ? 'white' : '#374151'} strokeWidth="1.5" />
+                <path d="M8 12h8" stroke={active === 'batch' ? 'white' : '#9CA3AF'} strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              BATCH
+            </button>
           </div>
         </div>
 
         <div>
-          {active === 'sora' ? (
-            <SoraUI />
-          ) : (
-            // Render the new Storyboard editor in FLOW
+          {active === 'sora' && <SoraUI />}
+          {active === 'flow' && (
             <div>
-              {/* lazy-load-ish import avoided for simplicity; direct component */}
-              {/* eslint-disable-next-line @typescript-eslint/consistent-type-imports */}
               <StoryboardEditor />
             </div>
           )}
+          {active === 'batch' && <BatchPage />}
         </div>
       </div>
     </div>

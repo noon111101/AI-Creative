@@ -1,3 +1,45 @@
+/**
+ * Lưu kết quả tạo ảnh từ Veo3 vào bảng veo_image_tasks
+ */
+export const logVeoImageTaskToDb = async (
+  media_generation_id: string,
+  prompt: string,
+  file_name: string | null,
+  image_url: string | null,
+  google_response: any
+) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  const record = {
+    media_generation_id,
+    prompt,
+    file_name,
+    image_url,
+    google_response
+  };
+  const { error } = await supabase.from('veo_image_tasks').insert([record]);
+  if (error) {
+    console.error('❌ Error saving veo image task to DB:', error);
+  } else {
+    console.log('✅ Veo image task saved to DB:', media_generation_id);
+  }
+};
+/**
+ * Fetches all veo_images from Supabase for use as reference images
+ */
+export const fetchVeoImages = async (): Promise<DbVeoImageRecord[]> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('veo_images')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error('Error fetching veo_images:', error);
+    return [];
+  }
+  return data as DbVeoImageRecord[];
+};
 
 import { getSupabaseClient } from './supabaseClient';
 import { DbTaskRecord, DbUploadRecord, ProcessedTask, UploadResponse, DbVeoImageRecord, DbVeoVideoRecord } from '../types';

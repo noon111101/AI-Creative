@@ -70,7 +70,7 @@ const StoryboardEditor: React.FC = () => {
         const googleToken = DEFAULT_API_TOKENS.googleToken;
         if (!googleToken) throw new Error('Google Labs token not configured');
         const base64 = await fileToJpegBase64(file);
-        const mediaId = await uploadImageToGoogleLabs(base64, googleToken, file.name);
+          const mediaId = await uploadImageToGoogleLabs(base64, googleToken, file.name, undefined, 'flow');
         updateScene(index, { mediaId, uploadStatus: 'done' });
       } catch (err: any) {
         console.error('Immediate upload failed:', err);
@@ -185,7 +185,7 @@ const StoryboardEditor: React.FC = () => {
           const startFile = scenes[i].file as File | undefined;
           if (!startFile) throw new Error(`Missing start image for scene ${i + 1}`);
           const startBase64 = await fileToJpegBase64(startFile);
-          startMediaId = await uploadImageToGoogleLabs(startBase64, googleToken, scenes[i].name);
+            startMediaId = await uploadImageToGoogleLabs(startBase64, googleToken, scenes[i].name, undefined, 'flow');
           updateScene(i, { mediaId: startMediaId, uploadStatus: 'done' });
         }
 
@@ -193,7 +193,7 @@ const StoryboardEditor: React.FC = () => {
           const endFile = scenes[i + 1].file as File | undefined;
           if (!endFile) throw new Error(`Missing end image for scene ${i + 2}`);
           const endBase64 = await fileToJpegBase64(endFile);
-          endMediaId = await uploadImageToGoogleLabs(endBase64, googleToken, scenes[i + 1].name);
+            endMediaId = await uploadImageToGoogleLabs(endBase64, googleToken, scenes[i + 1].name, undefined, 'flow');
           updateScene(i + 1, { mediaId: endMediaId, uploadStatus: 'done' });
         }
 

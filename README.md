@@ -1,3 +1,14 @@
+# Batch Flow API Backend
+
+Để chạy backend nhận request từ `/api/batch-flow`:
+
+
+```bash
+cd server
+node batchFlowApi.cjs
+```
+
+Server sẽ chạy ở port 3001 (hoặc PORT bạn đặt). Frontend có thể gửi POST tới `http://localhost:3001/api/batch-flow`.
 <div align="center">
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
