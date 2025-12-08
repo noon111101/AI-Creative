@@ -39,34 +39,24 @@ export default defineConfig({
             // Spoof Origin and Referer
             proxyReq.setHeader('origin', 'https://labs.google');
             proxyReq.setHeader('referer', 'https://labs.google/');
-            
-            // Exact Headers from Windows Curl
-            proxyReq.setHeader('user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36');
+            // User-Agent và các header Google Labs
+            proxyReq.setHeader('user-agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36');
             proxyReq.setHeader('x-browser-channel', 'stable');
-            proxyReq.setHeader('x-browser-copyright', 'Copyright 2025 Google LLC. All rights reserved.');
-            proxyReq.setHeader('x-browser-validation', 'Aj9fzfu+SaGLBY9Oqr3S7RokOtM=');
+            proxyReq.setHeader('x-browser-copyright', 'Copyright 2025 Google LLC. All Rights reserved.');
+            proxyReq.setHeader('x-browser-validation', 'd//u4R5DiWup/ApEN0L4er68I4A=');
             proxyReq.setHeader('x-browser-year', '2025');
-            proxyReq.setHeader('x-client-data', 'CIS2yQEIpLbJAQipncoBCLnZygEIlaHLAQiFoM0BCPOYzwEI+J3PAQ==');
-            
+            proxyReq.setHeader('x-client-data', 'CJa2yQEIpLbJAQipncoBCM/nygEIlqHLAQiGoM0BCPudzwE=');
             proxyReq.setHeader('sec-ch-ua', '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"');
             proxyReq.setHeader('sec-ch-ua-mobile', '?0');
-            proxyReq.setHeader('sec-ch-ua-platform', '"Windows"');
+            proxyReq.setHeader('sec-ch-ua-platform', '"macOS"');
             proxyReq.setHeader('sec-fetch-dest', 'empty');
             proxyReq.setHeader('sec-fetch-mode', 'cors');
             proxyReq.setHeader('sec-fetch-site', 'cross-site');
             proxyReq.setHeader('priority', 'u=1, i');
-          });
-
-          proxy.on('proxyRes', (proxyRes, req, res) => {
-            // Strip upstream CORS headers to avoid conflicts
-            delete proxyRes.headers['access-control-allow-origin'];
-            delete proxyRes.headers['access-control-allow-methods'];
-            delete proxyRes.headers['access-control-allow-headers'];
-
-            // Add permissive CORS headers for Localhost
-            proxyRes.headers['access-control-allow-origin'] = '*';
-            proxyRes.headers['access-control-allow-methods'] = 'GET, POST, OPTIONS, PUT, DELETE, PATCH';
-            proxyRes.headers['access-control-allow-headers'] = '*';
+            // Thêm các header Accept, Accept-Encoding, Accept-Language nếu cần
+            proxyReq.setHeader('accept', '*/*');
+            proxyReq.setHeader('accept-encoding', 'gzip, deflate, br, zstd');
+            proxyReq.setHeader('accept-language', 'vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5');
           });
         }
       },
