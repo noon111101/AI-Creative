@@ -1,14 +1,3 @@
-// Helper: Chọn endpoint phù hợp cho local (proxy Vite) và production (proxy Vercel)
-export function getApiUrl(path: string) {
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) {
-    return path;
-  } else {
-    if (path.startsWith('/v1')) return '/api/proxy-v1' + path.replace('/v1', '');
-    if (path.startsWith('/backend')) return '/api/proxy-backend' + path.replace('/backend', '');
-    if (path.startsWith('/api')) return '/api/proxy-local' + path.replace('/api', '');
-    return path;
-  }
-}
 
 // Payload chuẩn cho batchGenerateImages Google Labs
 export interface Veo3GenerateImageRequest {
@@ -63,7 +52,7 @@ export const generateVeo3Image = async (
         }]
       : [],
   };
-  const url = getApiUrl('/v1/projects/95f518c7-51a3-4b42-a44a-c8e62538fdeb/flowMedia:batchGenerateImages');
+  const url = '/v1/projects/95f518c7-51a3-4b42-a44a-c8e62538fdeb/flowMedia:batchGenerateImages';
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -90,7 +79,7 @@ export const fetchVeo3ImageResult = async (
   mediaGenerationId: string,
   googleToken: string
 ): Promise<any> => {
-  let url = getApiUrl(`/v1/media/${mediaGenerationId}`);
+  let url = `/v1/media/${mediaGenerationId}`;
   url += `?key=AIzaSyBtrm0o5ab1c-Ec8ZuLcGt3oJAA5VWt3pY&clientContext.tool=PINHOLE`;
   const response = await fetch(url, {
     method: 'GET',
@@ -322,7 +311,7 @@ export const uploadImageToGoogleLabs = async (
     }
   };
 
-  const response = await fetch(getApiUrl(GOOGLE_UPLOAD_URL), {
+  const response = await fetch(GOOGLE_UPLOAD_URL, {
     method: 'POST',
     headers: {
       'authorization': `Bearer ${googleToken}`,
@@ -401,7 +390,7 @@ export const startVeoVideoGeneration = async (
     ]
   };
 
-  const response = await fetch(getApiUrl(GOOGLE_GEN_VIDEO_URL), {
+  const response = await fetch(GOOGLE_GEN_VIDEO_URL, {
     method: 'POST',
     headers: {
       'authorization': `Bearer ${googleToken}`,
@@ -476,7 +465,7 @@ export const startVeoStartEndVideoGeneration = async (
     ]
   };
 
-  const response = await fetch(getApiUrl(GOOGLE_GEN_VIDEO_STARTEND_URL), {
+  const response = await fetch(GOOGLE_GEN_VIDEO_STARTEND_URL, {
     method: 'POST',
     headers: {
       'authorization': `Bearer ${googleToken}`,
@@ -535,7 +524,7 @@ export const pollVeoVideoStatus = async (
       ]
     };
 
-    const response = await fetch(getApiUrl(GOOGLE_CHECK_STATUS_URL), {
+    const response = await fetch(GOOGLE_CHECK_STATUS_URL, {
       method: 'POST',
       headers: {
         'authorization': `Bearer ${googleToken}`,
