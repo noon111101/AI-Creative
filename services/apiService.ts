@@ -578,5 +578,98 @@ export const pollVeoVideoStatus = async (
     }
   }
   
+
   throw new Error("Polling timed out for video generation");
 };
+
+// --- EXPORT HÀM KIỂM TRA LINK HẾT HẠN ---
+export async function ensureValidMediaUrl({
+  type,
+  mediaId,
+  url,
+  googleToken,
+  operationName,
+  sceneId,
+  updateDb,
+}: {
+  type: 'image' | 'video';
+  mediaId?: string;
+  url: string;
+  googleToken: string;
+  operationName?: string;
+  sceneId?: string;
+  updateDb: (newUrl: string) => Promise<void>;
+}): Promise<string> {
+  async function isUrlExpired(url: string): Promise<boolean> {
+    try {
+      const res = await fetch(url, { method: 'HEAD' });
+      return !res.ok;
+    } catch {
+      return true;
+    }
+  }
+
+  if (!(await isUrlExpired(url))) {
+    return url;
+  }
+
+  if (type === 'image' && mediaId) {
+    try {
+      const imgRes = await fetchVeo3ImageResult(mediaId, googleToken);
+      const newUrl = imgRes?.image?.fifeUrl || imgRes?.media?.[0]?.image?.fifeUrl || imgRes?.userUploadedImage?.fifeUrl || null;
+      if (newUrl) {
+        await updateDb(newUrl);
+        return newUrl;
+      }
+    } catch (e) {
+      console.warn('Failed to refetch image url:', e);
+    }
+  }
+
+  if (type === 'video' && operationName && sceneId) {
+    try {
+      const payload = {
+        operations: [
+          {
+            operation: { name: operationName },
+            sceneId: sceneId,
+            status: 'MEDIA_GENERATION_STATUS_PENDING',
+          },
+        ],
+      };
+      const response = await fetch(GOOGLE_CHECK_STATUS_URL, {
+        method: 'POST',
+        headers: {
+          'authorization': `Bearer ${googleToken}`,
+          'content-type': 'text/plain;charset=UTF-8',
+          'accept': '*/*',
+        },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const resultOp = data?.operations?.[0];
+        let extractedUrl: string | null = null;
+        if (
+          resultOp?.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' ||
+          resultOp?.done
+        ) {
+          extractedUrl =
+            resultOp?.response?.videoResult?.video?.uri ||
+            resultOp?.response?.fifeUrl ||
+            resultOp?.operation?.metadata?.video?.fifeUrl ||
+            resultOp?.operation?.metadata?.video?.mediaUri ||
+            null;
+        }
+        if (extractedUrl) {
+          await updateDb(extractedUrl);
+          return extractedUrl;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to refetch video url:', e);
+    }
+  }
+
+  return url;
+}

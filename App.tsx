@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import SoraUI from './components/SoraUI';
 import StoryboardEditor from './components/StoryboardEditor';
 import BatchPage from './components/BatchPage';
+import HistoryTab from './components/HistoryTab';
 
 const App: React.FC = () => {
-  const [active, setActive] = useState<'flow' | 'batch'>('batch');
+  const [active, setActive] = useState<'flow' | 'batch' | 'history'>('batch');
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-10 px-4 sm:px-6 lg:px-8 font-sans">
@@ -46,6 +47,21 @@ const App: React.FC = () => {
               </svg>
               BATCH
             </button>
+            <button
+              onClick={() => setActive('history')}
+              aria-pressed={active === 'history'}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none ${
+                active === 'history'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 6v6l4 2" stroke={active === 'history' ? 'white' : '#374151'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="12" cy="12" r="9" stroke={active === 'history' ? 'white' : '#374151'} strokeWidth="1.5" />
+              </svg>
+              HISTORY
+            </button>
           </div>
         </div>
 
@@ -57,6 +73,7 @@ const App: React.FC = () => {
             </div>
           )}
           {active === 'batch' && <BatchPage />}
+          {active === 'history' && <HistoryTab />}
         </div>
       </div>
     </div>
