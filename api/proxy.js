@@ -6,10 +6,10 @@ const apiProxy = createProxyMiddleware({
   target: 'https://aisandbox-pa.googleapis.com',
   changeOrigin: true,
   secure: true,
-  pathRewrite: {
-    // Loại bỏ phần /api/proxy tiền tố khi gửi đến Google
-    // Nếu frontend gọi /api/proxy/v1/something -> Google nhận /v1/something
-    '^/api/proxy': '',
+  pathRewrite: (path, req) => {
+    // Lấy path gốc từ request URL (sau khi đã bị rewrite bởi vercel.json)
+    // req.url sẽ là /v1:uploadUserImage hoặc /v1/something
+    return req.url;
   },
   onProxyReq: (proxyReq, req, res) => {
     // --- BẮT ĐẦU PHẦN INJECT HEADERS TỪ VITE CONFIG ---
