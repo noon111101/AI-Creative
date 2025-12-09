@@ -30,7 +30,7 @@ export const GOOGLE_GEN_VIDEO_URL = `${API_BASE_GOOGLE}/v1/video:batchAsyncGener
 // Endpoint that supports both start and end images for start+end frame generation
 export const GOOGLE_GEN_VIDEO_STARTEND_URL = `${API_BASE_GOOGLE}/v1/video:batchAsyncGenerateVideoStartAndEndImage`;
 export const GOOGLE_CHECK_STATUS_URL = `${API_BASE_GOOGLE}/v1/video:batchCheckAsyncVideoGenerationStatus`;
-export const GOOGLE_GEN_IMAGE_URL = `${API_BASE_GOOGLE}/v1/projects/95f518c7-51a3-4b42-a44a-c8e62538fdeb/flowMedia:batchGenerateImages`;
+export const GOOGLE_GEN_IMAGE_URL = `${API_BASE_GOOGLE}/v1/projects/89ce78f2-876e-4c07-ae58-f2226d1ac578/flowMedia:batchGenerateImages`;
 export const GOOGLE_FETCH_IMAGE_URL = `${API_BASE_GOOGLE}/v1/media`;
 export const POLLING_INTERVAL_MS = 8000;
 export const MAX_POLLING_ATTEMPTS = 100;

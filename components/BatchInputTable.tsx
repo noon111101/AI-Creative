@@ -141,7 +141,7 @@ export default function BatchInputTable() {
     // Gọi trực tiếp API Google Labs cho từng row: gen ảnh -> upload lại ảnh -> gen video
     const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
     const results: string[] = [];
-    const { generateVeo3Image, fetchVeo3ImageResult, uploadImageToGoogleLabs, startVeoVideoGeneration } = await import('../services/apiService');
+    const { generateVeo3Image, fetchVeo3ImageResult, uploadImageToGoogleLabs, startVeoVideoGeneration, pollVeoVideoStatus } = await import('../services/apiService');
     for (const row of rows) {
       try {
         // 1. Gen ảnh
@@ -149,7 +149,6 @@ export default function BatchInputTable() {
           prompt: row.imagePrompt,
           referenceImageId: row.referenceImageId,
         }, googleToken);
-        // Fix: lấy mediaId đúng từ response
         const mediaGenId = genRes?.media?.[0]?.image?.generatedImage?.mediaGenerationId;
         if (!mediaGenId) {
           results.push('Lỗi: Không có mediaGenerationId sau khi gen ảnh');
@@ -157,7 +156,6 @@ export default function BatchInputTable() {
         }
         // 2. Lấy URL ảnh vừa gen
         const imgRes = await fetchVeo3ImageResult(mediaGenId, googleToken);
-        // Lưu kết quả vào bảng veo_image_tasks
         const imgUrl = imgRes?.image?.fifeUrl || null;
         await logVeoImageTaskToDb(
           mediaGenId,
@@ -166,7 +164,6 @@ export default function BatchInputTable() {
           imgUrl,
           imgRes
         );
-        // Fix: lấy URL ảnh đúng từ image.fifeUrl
         if (!imgUrl) {
           results.push('Lỗi: Không lấy được URL ảnh vừa gen');
           continue;
@@ -184,7 +181,23 @@ export default function BatchInputTable() {
         // 5. Dùng mediaId vừa upload để gen video với prompt video
         const videoPrompt = row.videoPrompt || row.imagePrompt;
         const videoRes = await startVeoVideoGeneration(videoPrompt, uploadedMediaId, googleToken);
-        results.push(`Gen ảnh: ${mediaGenId} | Upload lại: ${uploadedMediaId} | Gen video: ${videoRes?.operationName || 'Thành công'}`);
+        // 6. Polling liên tục để lấy video file url
+        let videoUrl = '';
+        try {
+          videoUrl = await pollVeoVideoStatus(videoRes.operationName, videoRes.sceneId, googleToken);
+        } catch (pollErr) {
+          results.push(`Gen video: ${videoRes?.operationName || 'Thành công'} nhưng polling lỗi: ${pollErr?.message || pollErr}`);
+          continue;
+        }
+        // 7. Cập nhật video_url vào DB
+        if (videoUrl) {
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+          await supabase.from('veo_video_tasks').update({ video_url: videoUrl }).eq('operation_name', videoRes.operationName);
+          results.push(`Gen ảnh: ${mediaGenId} | Upload lại: ${uploadedMediaId} | Gen video: ${videoRes?.operationName} | Video URL: ${videoUrl}`);
+        } else {
+          results.push(`Gen ảnh: ${mediaGenId} | Upload lại: ${uploadedMediaId} | Gen video: ${videoRes?.operationName} | Không lấy được video URL`);
+        }
       } catch (err) {
         results.push('Lỗi: ' + (err?.message || err));
       }

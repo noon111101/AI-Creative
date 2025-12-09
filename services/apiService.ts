@@ -59,9 +59,7 @@ export const generateVeo3Image = async (
     headers: {
       'accept': '*/*',
       'authorization': `Bearer ${googleToken}`,
-      'content-type': 'text/plain;charset=UTF-8',
-      'origin': 'https://labs.google',
-      'referer': 'https://labs.google/',
+      'content-type': 'text/plain;charset=UTF-8'
     },
     body: JSON.stringify({ requests: [payload] }),
   });
@@ -89,9 +87,7 @@ export const fetchVeo3ImageResult = async (
     method: 'GET',
     headers: {
       'accept': '*/*',
-      'authorization': `Bearer ${googleToken}`,
-      'origin': 'https://labs.google',
-      'referer': 'https://labs.google/',
+      'authorization': `Bearer ${googleToken}`
     },
   });
 
@@ -380,7 +376,7 @@ export const startVeoVideoGeneration = async (
   const payload = {
     clientContext: {
         sessionId: `;${Date.now()}`,
-        projectId: "6544d32f-ac52-499d-8ec2-0eb0e1588330", // Fixed ID from example
+        projectId: "89ce78f2-876e-4c07-ae58-f2226d1ac578", // Fixed ID from example
         tool: "PINHOLE",
         userPaygateTier: "PAYGATE_TIER_ONE"
     },
@@ -454,7 +450,7 @@ export const startVeoStartEndVideoGeneration = async (
   const payload = {
     clientContext: {
       sessionId: `;${Date.now()}`,
-      projectId: options?.projectId || "85365437-6840-4ef3-be73-8e59e41f767a",
+      projectId: options?.projectId || "89ce78f2-876e-4c07-ae58-f2226d1ac578",
       tool: options?.tool || "PINHOLE",
       userPaygateTier: options?.userPaygateTier || "PAYGATE_TIER_TWO"
     },
@@ -604,7 +600,7 @@ export async function ensureValidMediaUrl({
   googleToken: string;
   operationName?: string;
   sceneId?: string;
-  updateDb: (newUrl: string) => Promise<void>;
+  updateDb: (newUrl: string, statusInfo?: { status?: string; error?: { code?: number; message?: string } }) => Promise<void>;
 }): Promise<string> {
   async function isUrlExpired(url: string): Promise<boolean> {
     try {
@@ -659,6 +655,9 @@ export async function ensureValidMediaUrl({
         const data = await response.json();
         const resultOp = data?.operations?.[0];
         let extractedUrl: string | null = null;
+        let statusInfo: { status?: string; error?: { code?: number; message?: string } } = {};
+        statusInfo.status = resultOp?.status;
+        statusInfo.error = resultOp?.operation?.error || resultOp?.error || undefined;
         if (
           resultOp?.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' ||
           resultOp?.done
@@ -671,8 +670,13 @@ export async function ensureValidMediaUrl({
             null;
         }
         if (extractedUrl) {
-          await updateDb(extractedUrl);
+          await updateDb(extractedUrl, statusInfo);
           return extractedUrl;
+        } else {
+          // Nếu status là FAILED thì vẫn gọi updateDb để lưu trạng thái lỗi
+          if (statusInfo.status === 'MEDIA_GENERATION_STATUS_FAILED') {
+            await updateDb('', statusInfo);
+          }
         }
       }
     } catch (e) {
