@@ -1,5 +1,8 @@
 {
   "rewrites": [
+    { "source": "/api/proxy-v1/:match*", "destination": "/server/proxy-v1.js" },
+    { "source": "/api/proxy-backend/:match*", "destination": "/server/proxy-backend.js" },
+    { "source": "/api/proxy-local/:match*", "destination": "/server/proxy-local.js" },
     {
       "source": "/(.*)",
       "destination": "/index.html"
