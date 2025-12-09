@@ -1,5 +1,3 @@
-import fetch from 'node-fetch';
-
 // Payload chuẩn cho batchGenerateImages Google Labs
 export interface Veo3GenerateImageRequest {
   clientContext: {
