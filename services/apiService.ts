@@ -1,3 +1,4 @@
+import fetch from 'node-fetch';
 
 // Payload chuẩn cho batchGenerateImages Google Labs
 export interface Veo3GenerateImageRequest {
@@ -19,6 +20,8 @@ export interface Veo3GenerateImageRequest {
  * Generate Veo3 image (batchGenerateImages) with standardized payload
  * Accepts prompt, referenceImageId, and optional params
  */
+import { GOOGLE_GEN_IMAGE_URL, GOOGLE_FETCH_IMAGE_URL } from '../constants';
+
 export const generateVeo3Image = async (
   {
     prompt,
@@ -52,8 +55,8 @@ export const generateVeo3Image = async (
         }]
       : [],
   };
-  const url = '/v1/projects/95f518c7-51a3-4b42-a44a-c8e62538fdeb/flowMedia:batchGenerateImages';
-  const response = await fetch(url, {
+
+  const response = await fetch(GOOGLE_GEN_IMAGE_URL, {
     method: 'POST',
     headers: {
       'accept': '*/*',
@@ -62,12 +65,14 @@ export const generateVeo3Image = async (
       'origin': 'https://labs.google',
       'referer': 'https://labs.google/',
     },
-    body: JSON.stringify({ requests: [payload] })
+    body: JSON.stringify({ requests: [payload] }),
   });
+
   if (!response.ok) {
     const txt = await response.text();
     throw new Error(`Veo3 image generation failed: ${txt}`);
   }
+
   return await response.json();
 };
 
@@ -79,8 +84,9 @@ export const fetchVeo3ImageResult = async (
   mediaGenerationId: string,
   googleToken: string
 ): Promise<any> => {
-  let url = `/v1/media/${mediaGenerationId}`;
+  let url = `${GOOGLE_FETCH_IMAGE_URL}/${mediaGenerationId}`;
   url += `?key=AIzaSyBtrm0o5ab1c-Ec8ZuLcGt3oJAA5VWt3pY&clientContext.tool=PINHOLE`;
+
   const response = await fetch(url, {
     method: 'GET',
     headers: {
@@ -88,12 +94,14 @@ export const fetchVeo3ImageResult = async (
       'authorization': `Bearer ${googleToken}`,
       'origin': 'https://labs.google',
       'referer': 'https://labs.google/',
-    }
+    },
   });
+
   if (!response.ok) {
     const txt = await response.text();
     throw new Error(`Veo3 image fetch failed: ${txt}`);
   }
+
   return await response.json();
 };
 
@@ -609,7 +617,10 @@ export async function ensureValidMediaUrl({
     }
   }
 
-  if (!(await isUrlExpired(url))) {
+  // Nếu URL ban đầu là null, bỏ qua kiểm tra và lấy URL mới
+  if (!url) {
+    console.warn('URL is null, attempting to fetch a new URL...');
+  } else if (!(await isUrlExpired(url))) {
     return url;
   }
 
@@ -622,7 +633,7 @@ export async function ensureValidMediaUrl({
         return newUrl;
       }
     } catch (e) {
-      console.warn('Failed to refetch image url:', e);
+      console.warn('Failed to refetch image URL:', e);
     }
   }
 
@@ -667,9 +678,10 @@ export async function ensureValidMediaUrl({
         }
       }
     } catch (e) {
-      console.warn('Failed to refetch video url:', e);
+      console.warn('Failed to refetch video URL:', e);
     }
   }
 
-  return url;
+  // Trả về URL cũ nếu không lấy được URL mới
+  return url || '';
 }

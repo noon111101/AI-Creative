@@ -315,7 +315,7 @@ export default function BatchInputTable() {
                               const newUrl = await ensureValidMediaUrl({
                                 type: 'image',
                                 mediaId: img.media_generation_id,
-                                url: img.file_url || '',
+                                url: img.file_url || '', // Nếu null, vẫn gọi để fetch URL mới
                                 googleToken,
                                 updateDb: async (newUrl) => {
                                   const { createClient } = await import('@supabase/supabase-js');
@@ -374,12 +374,12 @@ export default function BatchInputTable() {
                     className="w-full rounded-lg"
                     onError={async (e) => {
                       const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
-                      const imgRecord = veoImages.find(v => v.file_url === previewUrl);
+                      const imgRecord = veoImages.find(v => v.file_url === previewUrl || !v.file_url);
                       if (!imgRecord) return;
                       const newUrl = await ensureValidMediaUrl({
                         type: 'image',
                         mediaId: imgRecord.media_generation_id,
-                        url: previewUrl,
+                        url: previewUrl || '', // Nếu null, vẫn gọi để fetch URL mới
                         googleToken,
                         updateDb: async (newUrl) => {
                           const { createClient } = await import('@supabase/supabase-js');

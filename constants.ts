@@ -1,6 +1,3 @@
-
-
-
 // Helper to safely access import.meta.env without crashing
 const getSafeEnv = (): any => {
   try {
@@ -21,18 +18,20 @@ const IS_DEV = !!safeEnv.DEV;
 // - Development (Local): Use relative path '/backend' to trigger Vite Proxy (with Header Spoofing)
 // - Production (Vercel): Use absolute URL to bypass Vercel IP blocking (Requires CORS Extension)
 const API_BASE = IS_DEV ? '/backend' : 'https://sora.chatgpt.com/backend';
+const API_BASE_GOOGLE = IS_DEV ? '' : 'https://aisandbox-pa.googleapis.com';
 
 export const GEN_API_URL = `${API_BASE}/video_gen`;
 export const STATUS_API_URL = `${API_BASE}/v2/recent_tasks`;
 export const UPLOAD_API_URL = `${API_BASE}/uploads`;
 
 // Google Labs API Endpoints (Proxied via /v1 in vite.config.ts)
-export const GOOGLE_UPLOAD_URL = '/v1:uploadUserImage';
-export const GOOGLE_GEN_VIDEO_URL = '/v1/video:batchAsyncGenerateVideoStartImage';
+export const GOOGLE_UPLOAD_URL = `${API_BASE_GOOGLE}/v1:uploadUserImage`;
+export const GOOGLE_GEN_VIDEO_URL = `${API_BASE_GOOGLE}/v1/video:batchAsyncGenerateVideoStartImage`;
 // Endpoint that supports both start and end images for start+end frame generation
-export const GOOGLE_GEN_VIDEO_STARTEND_URL = '/v1/video:batchAsyncGenerateVideoStartAndEndImage';
-export const GOOGLE_CHECK_STATUS_URL = '/v1/video:batchCheckAsyncVideoGenerationStatus';
-
+export const GOOGLE_GEN_VIDEO_STARTEND_URL = `${API_BASE_GOOGLE}/v1/video:batchAsyncGenerateVideoStartAndEndImage`;
+export const GOOGLE_CHECK_STATUS_URL = `${API_BASE_GOOGLE}/v1/video:batchCheckAsyncVideoGenerationStatus`;
+export const GOOGLE_GEN_IMAGE_URL = `${API_BASE_GOOGLE}/v1/projects/95f518c7-51a3-4b42-a44a-c8e62538fdeb/flowMedia:batchGenerateImages`;
+export const GOOGLE_FETCH_IMAGE_URL = `${API_BASE_GOOGLE}/v1/media`;
 export const POLLING_INTERVAL_MS = 8000;
 export const MAX_POLLING_ATTEMPTS = 100;
 
