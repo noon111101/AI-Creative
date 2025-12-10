@@ -6,7 +6,7 @@
     },
     {
       "source": "/v1/:match*",
-      "destination": "https://aisandbox-pa.googleapis.com/v1/:match*"
+      "destination": "/api/proxy"
     }
   ]
 }

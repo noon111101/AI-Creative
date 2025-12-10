@@ -18,27 +18,17 @@ export interface Veo3GenerateImageRequest {
 export async function fetchUrlToDataUrl(url) {
     try {
         const localProxyUrl = url.replace('https://storage.googleapis.com', '/api/storage');
+        const response = await axios.get(localProxyUrl, { responseType: 'blob' }); // Đổi sang blob
         
-        // 1. Fetch dữ liệu dưới dạng ArrayBuffer
-        const response = await axios.get(localProxyUrl, { responseType: 'arraybuffer' });
-        
-        // 2. Lấy ArrayBuffer từ response.data
-        const arrayBuffer = response.data;
-
-        // 3. Chuyển đổi ArrayBuffer sang chuỗi Binary
-        let binary = '';
-        const bytes = new Uint8Array(arrayBuffer);
-        const len = bytes.byteLength;
-        
-        // Loop này hiệu quả với ảnh kích thước trung bình
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        
-        // 4. Dùng window.btoa để chuyển sang Base64
-        const base64 = window.btoa(binary);
-        
-        return `${base64}`; // Nếu cần prefix: `data:${contentType};base64,${base64}`
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64Only = reader.result.split(',')[1];
+                resolve(base64Only);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(response.data);
+        });
     } catch (error) {
         console.error("Lỗi khi fetch URL sang Base64:", error.message);
         throw new Error("Lỗi fetch client-side: Không thể tải ảnh để chuyển đổi Base64.");
