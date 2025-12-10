@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   // Mẹo: Dùng replace để xóa prefix '/v1' nếu nó còn dính trong url
   const cleanUrl = req.url.replace(/^\/api\/proxy/, '').replace(/^\/v1/, '');
   const targetUrl = `https://aisandbox-pa.googleapis.com/v1${cleanUrl}`;
-
+  const googleToken = process.env.VITE_GOOGLE_LABS_TOKEN;
   console.log(`[Proxy] Forwarding to: ${targetUrl}`); // Log này sẽ hiện trên Vercel!
 
   try {
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
       url: targetUrl,
       data: req.body,
       headers: {
-        // QUAN TRỌNG: Fake header để vượt qua check của Google
+        'Authorization': `Bearer ${googleToken}`,
         'Origin': 'https://labs.google',
         'Referer': 'https://labs.google/',
         'Content-Type': 'application/json',
