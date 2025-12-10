@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/storage/:match*",
+      "destination": "https://storage.googleapis.com/:match*"
+    },
+    {
+      "source": "/v1/:match*",
+      "destination": "https://aisandbox-pa.googleapis.com/v1/:match*"
+    }
+  ]
+}
