@@ -5,7 +5,7 @@ import BatchPage from './components/BatchPage';
 import HistoryTab from './components/HistoryTab';
 
 const App: React.FC = () => {
-  const [active, setActive] = useState<'flow' | 'batch' | 'history'>('batch');
+  const [active, setActive] = useState<'batch' | 'history'>('batch');
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-10 px-4 sm:px-6 lg:px-8 font-sans">
@@ -17,7 +17,7 @@ const App: React.FC = () => {
           </div>
 
           <div className="inline-flex items-center rounded-lg bg-white shadow-sm p-1.5 border border-gray-100">
-            <button
+            {/* <button
               onClick={() => setActive('flow')}
               aria-pressed={active === 'flow'}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none ${
@@ -31,7 +31,7 @@ const App: React.FC = () => {
                 <path d="M8 12h8" stroke={active === 'flow' ? 'white' : '#9CA3AF'} strokeWidth="2" strokeLinecap="round" />
               </svg>
               FLOW
-            </button>
+            </button> */}
             <button
               onClick={() => setActive('batch')}
               aria-pressed={active === 'batch'}
@@ -66,12 +66,12 @@ const App: React.FC = () => {
         </div>
 
         <div>
-          {active === 'sora' && <SoraUI />}
-          {active === 'flow' && (
+          {/* {active === 'sora' && <SoraUI />} */}
+          {/* {active === 'flow' && (
             <div>
               <StoryboardEditor />
             </div>
-          )}
+          )} */}
           {active === 'batch' && <BatchPage />}
           {active === 'history' && <HistoryTab />}
         </div>

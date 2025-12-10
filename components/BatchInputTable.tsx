@@ -28,10 +28,11 @@ export default function BatchInputTable() {
   const [previewTitle, setPreviewTitle] = useState<string>('');
   const [previewOperationName, setPreviewOperationName] = useState<string | null>(null);
   const [previewSceneId, setPreviewSceneId] = useState<string | null>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [customFileName, setCustomFileName] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'input' | 'log'>('input');
   const pasteRef = useRef<HTMLTextAreaElement>(null);
 
   // Convert mọi ảnh sang JPEG base64 trước khi upload
@@ -63,20 +64,19 @@ export default function BatchInputTable() {
     });
   };
 
-  // Upload ảnh lên Veo3 và lưu vào DB
-  const handleUploadImage = async () => {
-    if (!uploadFile) return;
+  // Upload nhiều ảnh lên Veo3 và lưu vào DB
+  const handleUploadImages = async () => {
+    if (!uploadFiles.length) return;
     setUploading(true);
     try {
-      // Chuyển mọi file sang JPEG base64
-      const base64 = await fileToJpegBase64(uploadFile);
-      // Lấy token từ biến môi trường
       const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
-      // Sử dụng customFileName nếu có, nếu không lấy tên file gốc
-      const fileNameToUse = customFileName.trim() ? customFileName.trim() : uploadFile.name;
-      const mediaId = await uploadImageToGoogleLabs(base64, googleToken, fileNameToUse, undefined, 'reference');
-      // Reload lại danh sách ảnh
-      setUploadFile(null);
+      for (const file of uploadFiles) {
+        const base64 = await fileToJpegBase64(file);
+        // Đặt tên file: prefix + original name
+        const fileNameToUse = (customFileName.trim() ? customFileName.trim() + '.' : '') + file.name;
+        await uploadImageToGoogleLabs(base64, googleToken, fileNameToUse, undefined, 'reference');
+      }
+      setUploadFiles([]);
       setCustomFileName('');
       fetchVeoImages().then(setVeoImages);
       alert('Upload thành công!');
@@ -103,20 +103,29 @@ export default function BatchInputTable() {
   const addRow = () => setRows([...rows, { ...emptyRow }]);
   const removeRow = (idx: number) => setRows(rows.filter((_, i) => i !== idx));
 
-  // Parse pasted text (tab/csv) and add rows
+  // Parse pasted text (tab/csv/JSON) và map với ảnh tham chiếu, tự động set checked cho UI
   const handlePaste = () => {
     const text = pasteRef.current?.value || '';
     if (!text.trim()) return;
     let newRows: BatchRow[] = [];
-    // Nếu là JSON array, parse luôn
     try {
       const json = JSON.parse(text);
       if (Array.isArray(json)) {
-        newRows = json.map(obj => ({
-          imagePrompt: obj.propmtImage || obj.promptImage || '',
-          referenceImageId: Array.isArray(obj.reference) ? obj.reference.join(',') : (obj.reference || ''),
-          videoPrompt: obj.promptVideo || '',
-        }));
+        newRows = json.map(obj => {
+          // Map reference array sang mediaGenerationId nếu trùng tên file
+          let refIds = [];
+          if (Array.isArray(obj.reference)) {
+            refIds = obj.reference.map(refName => {
+              const found = veoImages.find(img => img.file_name === refName || img.media_generation_id === refName);
+              return found ? found.media_generation_id : refName;
+            });
+          }
+          return {
+            imagePrompt: obj.promptImage || obj.propmtImage || '',
+            referenceImageId: refIds.join(','), // Đã map đúng mediaGenerationId, UI sẽ checked
+            videoPrompt: obj.promptVideo || '',
+          };
+        });
       }
     } catch {
       // Nếu không phải JSON, xử lý như cũ
@@ -135,74 +144,74 @@ export default function BatchInputTable() {
     if (pasteRef.current) pasteRef.current.value = '';
   };
 
+  const MAX_PARALLEL = 4;
+
   const handleSubmit = async () => {
+    setActiveTab('log');
     setSubmitting(true);
     setStatus([]);
-    // Gọi trực tiếp API Google Labs cho từng row: gen ảnh -> upload lại ảnh -> gen video
     const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
     const results: string[] = [];
-    // Thêm fetchUrlToDataUrl vào import list
-    const { generateVeo3Image, fetchVeo3ImageResult, uploadImageToGoogleLabs, startVeoVideoGeneration, pollVeoVideoStatus, fetchUrlToDataUrl } = await import('../services/apiService');
-    // Lưu ý: fetchUrlToDataUrl là hàm mới, cần được bạn định nghĩa trong apiService
+    const { generateVeo3Image, fetchVeo3ImageResult, uploadImageToGoogleLabs, startVeoVideoGeneration, fetchUrlToDataUrl } = await import('../services/apiService');
 
-    for (const row of rows) {
-      try {
-        // 1. Gen ảnh
-        const genRes = await generateVeo3Image({
-          prompt: row.imagePrompt,
-          referenceImageId: row.referenceImageId,
-        }, googleToken);
-        const mediaGenId = genRes?.media?.[0]?.image?.generatedImage?.mediaGenerationId;
-        if (!mediaGenId) {
-          results.push('Lỗi: Không có mediaGenerationId sau khi gen ảnh');
-          continue;
-        }
-        // 2. Lấy URL ảnh vừa gen
-        const imgRes = await fetchVeo3ImageResult(mediaGenId, googleToken);
-        const imgUrl = imgRes?.image?.fifeUrl || null;
-        await logVeoImageTaskToDb(
-          mediaGenId,
-          row.imagePrompt || '',
-          null,
-          imgUrl,
-          imgRes
-        );
-        if (!imgUrl) {
-          results.push('Lỗi: Không lấy được URL ảnh vừa gen');
-          continue;
-        }
-        // 3. 🔥 FIX LỖI CORS: Gọi service API để fetch ảnh (Server-Side) và trả về Base64
-        // Hàm này phải được định nghĩa trong apiService để dùng fetch/axios Node.js, VƯỢT QUA CORS.
-        const imgBase64 = await fetchUrlToDataUrl(imgUrl);
-        // Lưu ý: imgBase64 lúc này phải có tiền tố "data:image/jpeg;base64,..."
-
-        // 4. Upload lại ảnh lên Google Labs để lấy mediaId mới
-        const uploadedMediaId = await uploadImageToGoogleLabs(imgBase64, googleToken, undefined, undefined, 'ai');
-        // 5. Dùng mediaId vừa upload để gen video với prompt video
-        const videoPrompt = row.videoPrompt || row.imagePrompt;
-        const videoRes = await startVeoVideoGeneration(videoPrompt, uploadedMediaId, googleToken);
-        // 6. Polling liên tục để lấy video file url
-        let videoUrl = '';
+    let idx = 0;
+    while (idx < rows.length) {
+      const batch = rows.slice(idx, idx + MAX_PARALLEL);
+      await Promise.all(batch.map(async (row, rowIdx) => {
         try {
-          videoUrl = await pollVeoVideoStatus(videoRes.operationName, videoRes.sceneId, googleToken);
-        } catch (pollErr) {
-          results.push(`Gen video: ${videoRes?.operationName || 'Thành công'} nhưng polling lỗi: ${pollErr?.message || pollErr}`);
-          continue;
-        }
-        // 7. Cập nhật video_url vào DB
-        if (videoUrl) {
+          setStatus(prev => [...prev, `Bắt đầu gen ảnh cho dòng ${idx + rowIdx + 1}...`]);
+          // 1. Gen ảnh
+          const genRes = await generateVeo3Image({
+            prompt: row.imagePrompt,
+            referenceImageId: row.referenceImageId,
+          }, googleToken);
+          const mediaGenId = genRes?.media?.[0]?.image?.generatedImage?.mediaGenerationId;
+          if (!mediaGenId) {
+            setStatus(prev => [...prev, `Lỗi: Không có mediaGenerationId sau khi gen ảnh (dòng ${idx + rowIdx + 1})`]);
+            return;
+          }
+          setStatus(prev => [...prev, `Đã gen ảnh: ${mediaGenId} (dòng ${idx + rowIdx + 1})`]);
+          // 2. Lấy URL ảnh vừa gen
+          const imgRes = await fetchVeo3ImageResult(mediaGenId, googleToken);
+          const imgUrl = imgRes?.image?.fifeUrl || null;
+          await logVeoImageTaskToDb(
+            mediaGenId,
+            row.imagePrompt || '',
+            null,
+            imgUrl,
+            imgRes
+          );
+          if (!imgUrl) {
+            setStatus(prev => [...prev, `Lỗi: Không lấy được URL ảnh vừa gen (dòng ${idx + rowIdx + 1})`]);
+            return;
+          }
+          setStatus(prev => [...prev, `Đã lấy URL ảnh: ${imgUrl} (dòng ${idx + rowIdx + 1})`]);
+          // 3. Fetch ảnh về base64
+          const imgBase64 = await fetchUrlToDataUrl(imgUrl);
+          setStatus(prev => [...prev, `Đã fetch base64 ảnh (dòng ${idx + rowIdx + 1})`]);
+          // 4. Upload lại ảnh lên Google Labs để lấy mediaId mới
+          const uploadedMediaId = await uploadImageToGoogleLabs(imgBase64, googleToken, undefined, undefined, 'ai');
+          setStatus(prev => [...prev, `Đã upload lại ảnh, mediaId mới: ${uploadedMediaId} (dòng ${idx + rowIdx + 1})`]);
+          // 5. Gen video
+          const videoPrompt = row.videoPrompt || row.imagePrompt;
+          const videoRes = await startVeoVideoGeneration(videoPrompt, uploadedMediaId, googleToken);
+          setStatus(prev => [...prev, `Đã gửi yêu cầu gen video: ${videoRes?.operationName} (dòng ${idx + rowIdx + 1})`]);
+          // 6. Lưu video task vào DB, KHÔNG polling lấy video_url ngay
           const { createClient } = await import('@supabase/supabase-js');
           const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
-          await supabase.from('veo_video_tasks').update({ video_url: videoUrl }).eq('operation_name', videoRes.operationName);
-          results.push(`Gen ảnh: ${mediaGenId} | Upload lại: ${uploadedMediaId} | Gen video: ${videoRes?.operationName} | Video URL: ${videoUrl}`);
-        } else {
-          results.push(`Gen ảnh: ${mediaGenId} | Upload lại: ${uploadedMediaId} | Gen video: ${videoRes?.operationName} | Không lấy được video URL`);
+          await supabase.from('veo_video_tasks').upsert({
+            operation_name: videoRes.operationName,
+            scene_id: videoRes.sceneId,
+            status: 'MEDIA_GENERATION_STATUS_ACTIVE',
+            video_url: null
+          }, { onConflict: ['operation_name'] });
+          setStatus(prev => [...prev, `Đã lưu video task vào DB, đang chờ video... (dòng ${idx + rowIdx + 1})`]);
+        } catch (err) {
+          setStatus(prev => [...prev, `Lỗi: ${(err?.message || err)} (dòng ${idx + rowIdx + 1})`]);
         }
-      } catch (err) {
-        results.push('Lỗi: ' + (err?.message || err));
-      }
+      }));
+      idx += MAX_PARALLEL;
     }
-    setStatus(results);
     setSubmitting(false);
   };
 
@@ -222,152 +231,175 @@ export default function BatchInputTable() {
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setUploadFile(e.dataTransfer.files[0]);
+      setUploadFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
       <h2 className="text-2xl font-extrabold mb-6 text-brand-700">Batch Flow Input</h2>
-      <div className="mb-6 flex flex-wrap gap-3 items-center">
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`relative border-2 border-dashed rounded-lg px-4 py-6 flex flex-col items-center justify-center transition ${dragActive ? 'border-purple-600 bg-purple-50' : 'border-gray-300 bg-gray-100'}`}
-          style={{ minWidth: 220 }}
-        >
-          <input
-            type="file"
-            accept="image/*"
-            onChange={e => setUploadFile(e.target.files?.[0] || null)}
-            className="mb-2"
-          />
-          <span className="text-sm text-gray-600">Kéo thả ảnh vào đây hoặc chọn file</span>
-          {uploadFile && <span className="mt-2 text-xs text-brand-700">Đã chọn: {uploadFile.name}</span>}
-        </div>
-        <input
-          type="text"
-          placeholder="Tên file tuỳ chọn (không bắt buộc)"
-          value={customFileName}
-          onChange={e => setCustomFileName(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
-          style={{ minWidth: 200 }}
-        />
+      <div className="mb-4 flex gap-4">
         <button
-          onClick={handleUploadImage}
-          disabled={!uploadFile || uploading}
-          className="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold shadow hover:bg-purple-700 transition disabled:opacity-60"
-        >{uploading ? 'Đang upload...' : 'Upload ảnh lên Veo3'}</button>
-        <button onClick={addRow} disabled={submitting} className="px-4 py-2 rounded-lg bg-brand-600 text-white font-semibold shadow hover:bg-brand-700 transition disabled:opacity-60">Thêm dòng</button>
-        <button onClick={() => setShowPaste(v => !v)} className="px-4 py-2 rounded-lg bg-gray-100 font-semibold shadow hover:bg-gray-200 transition">Paste từ clipboard</button>
-        <button onClick={handleSubmit} disabled={submitting || rows.length === 0} className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold shadow hover:bg-green-700 transition disabled:opacity-60">
-          {submitting ? 'Đang gửi...' : 'Gửi batch'}
-        </button>
+          className={`px-4 py-2 rounded-lg font-semibold shadow transition ${activeTab === 'input' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+          onClick={() => setActiveTab('input')}
+        >Nhập batch</button>
+        <button
+          className={`px-4 py-2 rounded-lg font-semibold shadow transition ${activeTab === 'log' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+          onClick={() => setActiveTab('log')}
+        >Xem log</button>
       </div>
-      {showPaste && (
-        <div className="mb-6">
-          <textarea
-            ref={pasteRef}
-            rows={6}
-            className="w-full border border-brand-200 rounded-lg p-3 mb-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
-            placeholder={`Prompt ảnh[TAB]ID ảnh tham chiếu[TAB]Prompt video\nMỗi dòng 1 batch, phân tách bằng tab hoặc dấu phẩy.\nHoặc paste JSON:\n[\n  {\n    \"propmtImage\": \"Prompt ảnh\",\n    \"reference\": [\"id1\", \"id2\"],\n    \"promptVideo\": \"Prompt video\"\n  }\n]`}
-          />
-          <button onClick={handlePaste} className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition">Thêm từ clipboard</button>
+      {activeTab === 'input' && (
+        <>
+          <div className="mb-6 flex flex-wrap gap-3 items-center">
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`relative border-2 border-dashed rounded-lg px-4 py-6 flex flex-col items-center justify-center transition ${dragActive ? 'border-purple-600 bg-purple-50' : 'border-gray-300 bg-gray-100'}`}
+              style={{ minWidth: 220 }}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={e => setUploadFiles(Array.from(e.target.files || []))}
+                className="mb-2"
+              />
+              <span className="text-sm text-gray-600">Kéo thả nhiều ảnh hoặc chọn nhiều file</span>
+              {uploadFiles.length > 0 && (
+                <span className="mt-2 text-xs text-brand-700">Đã chọn: {uploadFiles.map(f => f.name).join(', ')}</span>
+              )}
+            </div>
+            <input
+              type="text"
+              placeholder="Tên file tuỳ chọn (không bắt buộc)"
+              value={customFileName}
+              onChange={e => setCustomFileName(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
+              style={{ minWidth: 200 }}
+            />
+            <button
+              onClick={handleUploadImages}
+              disabled={!uploadFiles.length || uploading}
+              className="px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold shadow hover:bg-purple-700 transition disabled:opacity-60"
+            >{uploading ? 'Đang upload...' : 'Upload nhiều ảnh lên Veo3'}</button>
+            <button onClick={addRow} disabled={submitting} className="px-4 py-2 rounded-lg bg-brand-600 text-white font-semibold shadow hover:bg-brand-700 transition disabled:opacity-60">Thêm dòng</button>
+            <button onClick={() => setShowPaste(v => !v)} className="px-4 py-2 rounded-lg bg-gray-100 font-semibold shadow hover:bg-gray-200 transition">Paste từ clipboard</button>
+            <button onClick={handleSubmit} disabled={submitting || rows.length === 0} className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold shadow hover:bg-green-700 transition disabled:opacity-60">
+              {submitting ? 'Đang gửi...' : 'Gửi batch'}
+            </button>
+          </div>
+          {showPaste && (
+            <div className="mb-6">
+              <textarea
+                ref={pasteRef}
+                rows={6}
+                className="w-full border border-brand-200 rounded-lg p-3 mb-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
+                placeholder={`Prompt ảnh[TAB]ID ảnh tham chiếu[TAB]Prompt video\nMỗi dòng 1 batch, phân tách bằng tab hoặc dấu phẩy.\nHoặc paste JSON:\n[\n  {\n    \"propmtImage\": \"Prompt ảnh\",\n    \"reference\": [\"id1\", \"id2\"],\n    \"promptVideo\": \"Prompt video\"\n  }\n]`}
+              />
+              <button onClick={handlePaste} className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold shadow hover:bg-blue-700 transition">Thêm từ clipboard</button>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-separate border-spacing-y-2">
+              <thead>
+                <tr className="bg-brand-50">
+                  <th className="px-4 py-3 rounded-tl-xl text-left font-bold text-brand-700">Prompt Ảnh</th>
+                  <th className="px-4 py-3 text-left font-bold text-brand-700">Ảnh Tham Chiếu</th>
+                  <th className="px-4 py-3 text-left font-bold text-brand-700">Prompt Video</th>
+                  <th className="px-4 py-3 rounded-tr-xl"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, idx) => (
+                  <tr key={idx} className="bg-gray-50 hover:bg-brand-50 shadow rounded-xl transition">
+                    <td className="px-4 py-2 align-middle">
+                      <input
+                        type="text"
+                        value={row.imagePrompt}
+                        onChange={e => handleChange(idx, 'imagePrompt', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
+                      />
+                    </td>
+                    <td className="px-4 py-2 align-middle">
+                      <div className="flex flex-wrap gap-2">
+                        {veoImages.filter(img => img.type === 'reference').map(img => {
+                          const checked = row.referenceImageId.split(',').includes(img.media_generation_id);
+                          return (
+                            <label key={img.media_generation_id} className="relative cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={e => {
+                                  const ids = row.referenceImageId ? row.referenceImageId.split(',').filter(Boolean) : [];
+                                  let newIds;
+                                  if (e.target.checked) {
+                                    newIds = [...ids, img.media_generation_id];
+                                  } else {
+                                    newIds = ids.filter(id => id !== img.media_generation_id);
+                                  }
+                                  handleChange(idx, 'referenceImageId', newIds.join(','));
+                                }}
+                                className="absolute top-1 left-1 z-10 w-4 h-4"
+                              />
+                              <img
+                                src={img.file_url || ''}
+                                alt={img.file_name || img.media_generation_id}
+                                className={`w-16 h-16 object-cover rounded-lg border ${checked ? 'border-blue-600 ring-2 ring-blue-400' : 'border-gray-300'}`}
+                                style={{ filter: checked ? 'brightness(0.85)' : 'none' }}
+                                onError={async (e) => {
+                                  const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
+                                  const newUrl = await ensureValidMediaUrl({
+                                    type: 'image',
+                                    mediaId: img.media_generation_id,
+                                    url: img.file_url || '', // Nếu null, vẫn gọi để fetch URL mới
+                                    googleToken,
+                                    updateDb: async (newUrl) => {
+                                      const { createClient } = await import('@supabase/supabase-js');
+                                      const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+                                      await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', img.media_generation_id);
+                                    },
+                                  });
+                                  e.target.src = newUrl;
+                                }}
+                              />
+                              <span className="block text-xs text-center mt-1 max-w-[64px] truncate">{img.file_name || img.media_generation_id}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 align-middle">
+                      <input
+                        type="text"
+                        value={row.videoPrompt}
+                        onChange={e => handleChange(idx, 'videoPrompt', e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
+                      />
+                    </td>
+                    <td className="px-4 py-2 align-middle text-center flex gap-2 justify-center">
+                      {rows.length > 1 && (
+                        <button onClick={() => removeRow(idx)} disabled={submitting} className="text-red-600 hover:underline font-semibold">Xóa</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {activeTab === 'log' && (
+        <div className="mt-4">
+          <h3 className="text-lg font-bold mb-2 text-green-700">Log trạng thái batch</h3>
+          <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto border border-green-200">
+            {status.length === 0 && <div className="text-gray-400">Chưa có log nào.</div>}
+            {status.map((s, i) => (
+              <div key={i} className="text-base text-green-800 font-mono mb-1 whitespace-pre-line">{s}</div>
+            ))}
+          </div>
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-separate border-spacing-y-2">
-          <thead>
-            <tr className="bg-brand-50">
-              <th className="px-4 py-3 rounded-tl-xl text-left font-bold text-brand-700">Prompt Ảnh</th>
-              <th className="px-4 py-3 text-left font-bold text-brand-700">Ảnh Tham Chiếu</th>
-              <th className="px-4 py-3 text-left font-bold text-brand-700">Prompt Video</th>
-              <th className="px-4 py-3 rounded-tr-xl"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, idx) => (
-              <tr key={idx} className="bg-gray-50 hover:bg-brand-50 shadow rounded-xl transition">
-                <td className="px-4 py-2 align-middle">
-                  <input
-                    type="text"
-                    value={row.imagePrompt}
-                    onChange={e => handleChange(idx, 'imagePrompt', e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
-                  />
-                </td>
-                <td className="px-4 py-2 align-middle">
-                  <div className="flex flex-wrap gap-2">
-                    {veoImages.map(img => {
-                      const checked = row.referenceImageId.split(',').includes(img.media_generation_id);
-                      return (
-                        <label key={img.media_generation_id} className="relative cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={e => {
-                              const ids = row.referenceImageId ? row.referenceImageId.split(',').filter(Boolean) : [];
-                              let newIds;
-                              if (e.target.checked) {
-                                newIds = [...ids, img.media_generation_id];
-                              } else {
-                                newIds = ids.filter(id => id !== img.media_generation_id);
-                              }
-                              handleChange(idx, 'referenceImageId', newIds.join(','));
-                            }}
-                            className="absolute top-1 left-1 z-10 w-4 h-4"
-                          />
-                          <img
-                            src={img.file_url || ''}
-                            alt={img.file_name || img.media_generation_id}
-                            className={`w-16 h-16 object-cover rounded-lg border ${checked ? 'border-blue-600 ring-2 ring-blue-400' : 'border-gray-300'}`}
-                            style={{ filter: checked ? 'brightness(0.85)' : 'none' }}
-                            onError={async (e) => {
-                              const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
-                              const newUrl = await ensureValidMediaUrl({
-                                type: 'image',
-                                mediaId: img.media_generation_id,
-                                url: img.file_url || '', // Nếu null, vẫn gọi để fetch URL mới
-                                googleToken,
-                                updateDb: async (newUrl) => {
-                                  const { createClient } = await import('@supabase/supabase-js');
-                                  const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
-                                  await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', img.media_generation_id);
-                                },
-                              });
-                              e.target.src = newUrl;
-                            }}
-                          />
-                          <span className="block text-xs text-center mt-1 max-w-[64px] truncate">{img.file_name || img.media_generation_id}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </td>
-                <td className="px-4 py-2 align-middle">
-                  <input
-                    type="text"
-                    value={row.videoPrompt}
-                    onChange={e => handleChange(idx, 'videoPrompt', e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-300"
-                  />
-                </td>
-                <td className="px-4 py-2 align-middle text-center flex gap-2 justify-center">
-                  {rows.length > 1 && (
-                    <button onClick={() => removeRow(idx)} disabled={submitting} className="text-red-600 hover:underline font-semibold">Xóa</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-6">
-        {status.map((s, i) => (
-          <div key={i} className="text-base text-green-700 font-medium mb-1">{s}</div>
-        ))}
-      </div>
 
       {/* Modal preview ảnh/video */}
       {previewOpen && previewType === 'image' && (
