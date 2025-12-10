@@ -5,6 +5,10 @@
       "destination": "https://storage.googleapis.com/:match*"
     },
     {
+      "source": "/v1:uploadUserImage",
+      "destination": "/api/proxy?match=:uploadUserImage"
+    },
+    {
       "source": "/v1/:match*",
       "destination": "/api/proxy"
     }
