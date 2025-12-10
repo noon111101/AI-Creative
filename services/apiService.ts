@@ -14,7 +14,22 @@ export interface Veo3GenerateImageRequest {
   }>;
 }
 
-
+export async function fetchUrlToDataUrl(url) {
+    try {
+      const localProxyUrl = url.replace('https://storage.googleapis.com', '/api/storage');
+        // Tải dữ liệu ảnh dưới dạng Buffer (dùng Node.js fetch/axios để vượt CORS)
+        const response = await axios.get(localProxyUrl, { responseType: 'arraybuffer' });
+        
+        const contentType = response.headers['content-type'] || 'image/jpeg';
+        const buffer = Buffer.from(response.data);
+        const base64 = buffer.toString('base64');
+        
+        return `data:${contentType};base64,${base64}`;
+    } catch (error) {
+        console.error("Lỗi khi fetch URL sang Base64:", error.message);
+        throw new Error("Lỗi fetch server-side: Không thể tải ảnh để chuyển đổi Base64.");
+    }
+}
 /**
  * Generate Veo3 image (batchGenerateImages) with standardized payload
  * Accepts prompt, referenceImageId, and optional params

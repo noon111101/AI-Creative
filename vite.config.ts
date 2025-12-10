@@ -17,7 +17,13 @@ export default defineConfig({
             proxyReq.setHeader('referer', 'https://labs.google/');
           });
         }
-      }
+      },
+      '/api/storage': {
+        target: 'https://storage.googleapis.com',
+        changeOrigin: true, // Quan trọng: Đổi Origin thành target
+        rewrite: (path) => path.replace(/^\/api\/storage/, ''),
+        secure: false, // Dùng cho HTTPS
+      },
     }
   }
 });

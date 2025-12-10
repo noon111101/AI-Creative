@@ -4,11 +4,11 @@ import { fetchVeoImages } from '../services/dbService';
 import { logVeoImageTaskToDb } from '../services/dbService';
 import { DbVeoImageRecord } from '../types';
 
-  interface BatchRow {
-    imagePrompt: string;
-    referenceImageId: string; // comma-separated mediaGenerationIds
-    videoPrompt: string;
-  }
+interface BatchRow {
+  imagePrompt: string;
+  referenceImageId: string; // comma-separated mediaGenerationIds
+  videoPrompt: string;
+}
 
 const emptyRow: BatchRow = {
   imagePrompt: '',
@@ -141,7 +141,10 @@ export default function BatchInputTable() {
     // Gọi trực tiếp API Google Labs cho từng row: gen ảnh -> upload lại ảnh -> gen video
     const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
     const results: string[] = [];
-    const { generateVeo3Image, fetchVeo3ImageResult, uploadImageToGoogleLabs, startVeoVideoGeneration, pollVeoVideoStatus } = await import('../services/apiService');
+    // Thêm fetchUrlToDataUrl vào import list
+    const { generateVeo3Image, fetchVeo3ImageResult, uploadImageToGoogleLabs, startVeoVideoGeneration, pollVeoVideoStatus, fetchUrlToDataUrl } = await import('../services/apiService');
+    // Lưu ý: fetchUrlToDataUrl là hàm mới, cần được bạn định nghĩa trong apiService
+
     for (const row of rows) {
       try {
         // 1. Gen ảnh
@@ -168,14 +171,11 @@ export default function BatchInputTable() {
           results.push('Lỗi: Không lấy được URL ảnh vừa gen');
           continue;
         }
-        // 3. Tải lại ảnh về, chuyển sang base64
-        const imgBlob = await fetch(imgUrl).then(r => r.blob());
-        const imgBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(imgBlob);
-        });
+        // 3. 🔥 FIX LỖI CORS: Gọi service API để fetch ảnh (Server-Side) và trả về Base64
+        // Hàm này phải được định nghĩa trong apiService để dùng fetch/axios Node.js, VƯỢT QUA CORS.
+        const imgBase64 = await fetchUrlToDataUrl(imgUrl);
+        // Lưu ý: imgBase64 lúc này phải có tiền tố "data:image/jpeg;base64,..."
+
         // 4. Upload lại ảnh lên Google Labs để lấy mediaId mới
         const uploadedMediaId = await uploadImageToGoogleLabs(imgBase64, googleToken, undefined, undefined, 'ai');
         // 5. Dùng mediaId vừa upload để gen video với prompt video
@@ -319,10 +319,10 @@ export default function BatchInputTable() {
                             className="absolute top-1 left-1 z-10 w-4 h-4"
                           />
                           <img
-                            src={img.file_url || ''} 
-                            alt={img.file_name || img.media_generation_id} 
-                            className={`w-16 h-16 object-cover rounded-lg border ${checked ? 'border-blue-600 ring-2 ring-blue-400' : 'border-gray-300'}`} 
-                            style={{ filter: checked ? 'brightness(0.85)' : 'none' }} 
+                            src={img.file_url || ''}
+                            alt={img.file_name || img.media_generation_id}
+                            className={`w-16 h-16 object-cover rounded-lg border ${checked ? 'border-blue-600 ring-2 ring-blue-400' : 'border-gray-300'}`}
+                            style={{ filter: checked ? 'brightness(0.85)' : 'none' }}
                             onError={async (e) => {
                               const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
                               const newUrl = await ensureValidMediaUrl({
@@ -376,35 +376,35 @@ export default function BatchInputTable() {
             <button className="absolute top-2 right-2 text-gray-500 hover:text-gray-800" onClick={() => setPreviewOpen(false)}>&times;</button>
             <h3 className="text-lg font-bold mb-4">{previewTitle}</h3>
             <img src={previewUrl} alt={previewTitle} className="w-full rounded-lg" />
-              {/* Kiểm tra link previewUrl hết hạn khi mở modal */}
-              {/* Nếu hết hạn, tự động lấy lại link mới và cập nhật DB */}
-              {/* Chỉ áp dụng cho ảnh, video xử lý ở modal video */}
-              {previewUrl && previewType === 'image' && (
-                <React.Fragment>
-                  <img
-                    src={previewUrl}
-                    alt={previewTitle}
-                    className="w-full rounded-lg"
-                    onError={async (e) => {
-                      const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
-                      const imgRecord = veoImages.find(v => v.file_url === previewUrl || !v.file_url);
-                      if (!imgRecord) return;
-                      const newUrl = await ensureValidMediaUrl({
-                        type: 'image',
-                        mediaId: imgRecord.media_generation_id,
-                        url: previewUrl || '', // Nếu null, vẫn gọi để fetch URL mới
-                        googleToken,
-                        updateDb: async (newUrl) => {
-                          const { createClient } = await import('@supabase/supabase-js');
-                          const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
-                          await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', imgRecord.media_generation_id);
-                        },
-                      });
-                      e.target.src = newUrl;
-                    }}
-                  />
-                </React.Fragment>
-              )}
+            {/* Kiểm tra link previewUrl hết hạn khi mở modal */}
+            {/* Nếu hết hạn, tự động lấy lại link mới và cập nhật DB */}
+            {/* Chỉ áp dụng cho ảnh, video xử lý ở modal video */}
+            {previewUrl && previewType === 'image' && (
+              <React.Fragment>
+                <img
+                  src={previewUrl}
+                  alt={previewTitle}
+                  className="w-full rounded-lg"
+                  onError={async (e) => {
+                    const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
+                    const imgRecord = veoImages.find(v => v.file_url === previewUrl || !v.file_url);
+                    if (!imgRecord) return;
+                    const newUrl = await ensureValidMediaUrl({
+                      type: 'image',
+                      mediaId: imgRecord.media_generation_id,
+                      url: previewUrl || '', // Nếu null, vẫn gọi để fetch URL mới
+                      googleToken,
+                      updateDb: async (newUrl) => {
+                        const { createClient } = await import('@supabase/supabase-js');
+                        const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+                        await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', imgRecord.media_generation_id);
+                      },
+                    });
+                    e.target.src = newUrl;
+                  }}
+                />
+              </React.Fragment>
+            )}
           </div>
         </div>
       )}
