@@ -1,3 +1,4 @@
+import axios from 'axios';
 // Payload chuẩn cho batchGenerateImages Google Labs
 export interface Veo3GenerateImageRequest {
   clientContext: {
@@ -83,23 +84,29 @@ export const fetchVeo3ImageResult = async (
   let url = `${GOOGLE_FETCH_IMAGE_URL}/${mediaGenerationId}`;
   url += `?key=AIzaSyBtrm0o5ab1c-Ec8ZuLcGt3oJAA5VWt3pY&clientContext.tool=PINHOLE`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'accept': '*/*',
-      'authorization': `Bearer ${googleToken}`,
-      'Origin': 'https://labs.google', 
-      'Referer': 'https://labs.google/',
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    },
-  });
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'Accept': '*/*',
+        'Authorization': `Bearer ${googleToken}`,
+        // Axios sẽ tôn trọng tuyệt đối các header này
+        'Origin': 'https://labs.google',
+        'Referer': 'https://labs.google/',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        
+        // Mẹo: Thêm Header Host nếu server bên kia check kỹ
+        // 'Host': 'labs.google' 
+      }
+    });
 
-  if (!response.ok) {
-    const txt = await response.text();
-    throw new Error(`Veo3 image fetch failed: ${txt}`);
+  return response.data;
+  } catch (error: any) {
+    // Xử lý lỗi của axios
+    if (error.response) {
+       throw new Error(`Veo3 fetch failed [${error.response.status}]: ${JSON.stringify(error.response.data)}`);
+    }
+    throw new Error(`Veo3 fetch failed: ${error.message}`);
   }
-
-  return await response.json();
 };
 
 import { 
