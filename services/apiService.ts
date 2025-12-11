@@ -541,7 +541,7 @@ export const pollVeoVideoStatus = async (
   const maxAttempts = 60; // 60 * 5s = 5 mins
 
   while (attempts < maxAttempts) {
-    await delay(5000); // 5 sec delay
+    await delay(10000); // 10 sec delay
     attempts++;
     if (onUpdate) onUpdate(`Polling attempt ${attempts}/${maxAttempts}...`);
 

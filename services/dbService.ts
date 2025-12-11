@@ -1,5 +1,5 @@
 /**
- * Lưu kết quả tạo ảnh từ Veo3 vào bảng veo_image_tasks
+ * Lưu kết quả tạo ảnh từ Veo3 vào bảng veo_images (type 'ai')
  */
 export const logVeoImageTaskToDb = async (
   media_generation_id: string,
@@ -17,7 +17,7 @@ export const logVeoImageTaskToDb = async (
     image_url,
     google_response
   };
-  const { error } = await supabase.from('veo_image_tasks').insert([record]);
+  const { error } = await supabase.from('veo_images').insert([{ ...record, type: 'ai' }]);
   if (error) {
     console.error('❌ Error saving veo image task to DB:', error);
   } else {

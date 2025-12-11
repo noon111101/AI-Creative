@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchVeo3ImageResult, uploadImageToGoogleLabs, ensureValidMediaUrl } from '../services/apiService';
 import { fetchVeoImages } from '../services/dbService';
-import { logVeoImageTaskToDb } from '../services/dbService';
+import { createClient } from '@supabase/supabase-js';
+const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
 import { DbVeoImageRecord } from '../types';
 
 interface BatchRow {
@@ -34,6 +35,13 @@ export default function BatchInputTable() {
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<'input' | 'log'>('input');
   const pasteRef = useRef<HTMLTextAreaElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+  // Auto scroll log
+  useEffect(() => {
+    if (activeTab === 'log' && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [status, activeTab]);
 
   // Convert mọi ảnh sang JPEG base64 trước khi upload
   const fileToJpegBase64 = (file: File): Promise<string> => {
@@ -157,6 +165,8 @@ export default function BatchInputTable() {
     let idx = 0;
     while (idx < rows.length) {
       const batch = rows.slice(idx, idx + MAX_PARALLEL);
+      // Lưu thông tin video task để polling
+      const videoTasks: { operationName: string, sceneId: string, rowIdx: number }[] = [];
       await Promise.all(batch.map(async (row, rowIdx) => {
         try {
           setStatus(prev => [...prev, `Bắt đầu gen ảnh cho dòng ${idx + rowIdx + 1}...`]);
@@ -174,13 +184,17 @@ export default function BatchInputTable() {
           // 2. Lấy URL ảnh vừa gen
           const imgRes = await fetchVeo3ImageResult(mediaGenId, googleToken);
           const imgUrl = imgRes?.image?.fifeUrl || null;
-          await logVeoImageTaskToDb(
-            mediaGenId,
-            row.imagePrompt || '',
-            null,
-            imgUrl,
-            imgRes
-          );
+          // Lưu ảnh gen ra vào veo_images (type 'ai')
+          await supabase.from('veo_images').upsert([
+            {
+              media_generation_id: mediaGenId,
+              file_name: '',
+              file_url: imgUrl,
+              type: 'ai',
+              prompt: row.imagePrompt || '',
+              created_at: new Date().toISOString()
+            }
+          ], { onConflict: 'media_generation_id' });
           if (!imgUrl) {
             setStatus(prev => [...prev, `Lỗi: Không lấy được URL ảnh vừa gen (dòng ${idx + rowIdx + 1})`]);
             return;
@@ -190,26 +204,78 @@ export default function BatchInputTable() {
           const imgBase64 = await fetchUrlToDataUrl(imgUrl);
           setStatus(prev => [...prev, `Đã fetch base64 ảnh (dòng ${idx + rowIdx + 1})`]);
           // 4. Upload lại ảnh lên Google Labs để lấy mediaId mới
-          const uploadedMediaId = await uploadImageToGoogleLabs(imgBase64, googleToken, undefined, undefined, 'ai');
-          setStatus(prev => [...prev, `Đã upload lại ảnh, mediaId mới: ${uploadedMediaId} (dòng ${idx + rowIdx + 1})`]);
+              const uploadedMediaIdRaw = await uploadImageToGoogleLabs(imgBase64, googleToken, undefined, undefined, 'ai');
+              const uploadedMediaId = typeof uploadedMediaIdRaw === 'string' ? uploadedMediaIdRaw : String(uploadedMediaIdRaw);
+              setStatus(prev => [...prev, `Đã upload lại ảnh, mediaId mới: ${uploadedMediaId} (dòng ${idx + rowIdx + 1})`]);
           // 5. Gen video
           const videoPrompt = row.videoPrompt || row.imagePrompt;
           const videoRes = await startVeoVideoGeneration(videoPrompt, uploadedMediaId, googleToken);
           setStatus(prev => [...prev, `Đã gửi yêu cầu gen video: ${videoRes?.operationName} (dòng ${idx + rowIdx + 1})`]);
-          // 6. Lưu video task vào DB, KHÔNG polling lấy video_url ngay
-          const { createClient } = await import('@supabase/supabase-js');
-          const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
-          await supabase.from('veo_video_tasks').upsert({
-            operation_name: videoRes.operationName,
-            scene_id: videoRes.sceneId,
-            status: 'MEDIA_GENERATION_STATUS_ACTIVE',
-            video_url: null
-          }, { onConflict: ['operation_name'] });
+          // 6. Lưu video task vào DB
+          await supabase.from('veo_video_tasks').upsert([
+            {
+              operation_name: videoRes.operationName,
+              scene_id: videoRes.sceneId,
+              status: 'MEDIA_GENERATION_STATUS_ACTIVE',
+              video_url: null,
+              video_prompt: videoPrompt
+            }
+          ], { onConflict: 'operation_name' });
           setStatus(prev => [...prev, `Đã lưu video task vào DB, đang chờ video... (dòng ${idx + rowIdx + 1})`]);
+          // Lưu lại để polling
+          videoTasks.push({ operationName: videoRes.operationName, sceneId: videoRes.sceneId, rowIdx: idx + rowIdx });
         } catch (err) {
           setStatus(prev => [...prev, `Lỗi: ${(err?.message || err)} (dòng ${idx + rowIdx + 1})`]);
         }
       }));
+
+      // Polling trạng thái video cho batch này
+      const POLL_INTERVAL = 10000; // 10s
+      const MAX_POLL = 60; // tối đa 5 phút
+      let pollCount = 0;
+      let allDoneOrFailed = false;
+      while (!allDoneOrFailed && pollCount < MAX_POLL) {
+        await new Promise(res => setTimeout(res, POLL_INTERVAL));
+        pollCount++;
+        // Query trạng thái video từ DB
+        const { data: videoRows, error } = await supabase
+          .from('veo_video_tasks')
+          .select('operation_name, status, video_url, scene_id')
+          .in('operation_name', videoTasks.map(t => t.operationName));
+        if (error) {
+          setStatus(prev => [...prev, `Lỗi khi kiểm tra trạng thái video: ${error.message}`]);
+          break;
+        }
+        // Với các video chưa success/fail, gọi API Google để lấy trạng thái mới nhất
+        if (videoRows && videoRows.length) {
+          await Promise.all(videoRows.map(async v => {
+            if (v.status !== 'MEDIA_GENERATION_STATUS_SUCCESSFUL' && v.status !== 'MEDIA_GENERATION_STATUS_FAILED') {
+              // Gọi hàm pollVeoVideoStatus để cập nhật trạng thái vào DB
+              try {
+                const { pollVeoVideoStatus } = await import('../services/apiService');
+                const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
+                await pollVeoVideoStatus(v.operation_name, v.scene_id, googleToken);
+                setStatus(prev => [...prev, `Đã gọi cập nhật trạng thái video ${v.operation_name}`]);
+              } catch (err) {
+                setStatus(prev => [...prev, `Lỗi khi fetch trạng thái video từ Google: ${(err?.message || err)}`]);
+              }
+            }
+          }));
+        }
+        // Query lại trạng thái video sau khi cập nhật
+        const { data: videoRowsUpdated } = await supabase
+          .from('veo_video_tasks')
+          .select('operation_name, status, video_url')
+          .in('operation_name', videoTasks.map(t => t.operationName));
+        // Kiểm tra tất cả video đã xong chưa
+        allDoneOrFailed = videoRowsUpdated && videoRowsUpdated.length === videoTasks.length && videoRowsUpdated.every(v => v.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' || v.status === 'MEDIA_GENERATION_STATUS_FAILED');
+        setStatus(prev => [...prev, `Kiểm tra trạng thái video batch ${idx + 1}~${idx + batch.length}: ${videoRowsUpdated?.map(v => `${v.operation_name}: ${v.status}`).join(', ')}`]);
+      }
+          if (!allDoneOrFailed) {
+            setStatus(prev => [...prev, `Batch ${idx + 1}~${idx + batch.length} chưa hoàn thành hết video sau ${MAX_POLL * POLL_INTERVAL / 1000}s.`]);
+          } else {
+            setStatus(prev => [...prev, `Batch ${idx + 1}~${idx + batch.length} đã hoàn thành (success hoặc fail) tất cả video.`]);
+      }
       idx += MAX_PARALLEL;
     }
     setSubmitting(false);
@@ -392,7 +458,7 @@ export default function BatchInputTable() {
       {activeTab === 'log' && (
         <div className="mt-4">
           <h3 className="text-lg font-bold mb-2 text-green-700">Log trạng thái batch</h3>
-          <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto border border-green-200">
+          <div ref={logRef} className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto border border-green-200">
             {status.length === 0 && <div className="text-gray-400">Chưa có log nào.</div>}
             {status.map((s, i) => (
               <div key={i} className="text-base text-green-800 font-mono mb-1 whitespace-pre-line">{s}</div>
