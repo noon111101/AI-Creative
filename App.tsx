@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
+
 import SoraUI from './components/SoraUI';
 import StoryboardEditor from './components/StoryboardEditor';
 import BatchPage from './components/BatchPage';
 import HistoryTab from './components/HistoryTab';
+import TiktokTab from './components/TiktokTab';
 
 const App: React.FC = () => {
-  const [active, setActive] = useState<'batch' | 'history'>('batch');
+  const [active, setActive] = useState<'batch' | 'history' | 'tiktok'>('batch');
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-10 px-4 sm:px-6 lg:px-8 font-sans">
@@ -62,6 +64,21 @@ const App: React.FC = () => {
               </svg>
               HISTORY
             </button>
+            <button
+              onClick={() => setActive('tiktok')}
+              aria-pressed={active === 'tiktok'}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 focus:outline-none ${
+                active === 'tiktok'
+                  ? 'bg-pink-600 text-white shadow-md'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 7v7a4 4 0 1 0 4-4h-1" stroke={active === 'tiktok' ? 'white' : '#EC4899'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="12" cy="12" r="9" stroke={active === 'tiktok' ? 'white' : '#EC4899'} strokeWidth="1.5" />
+              </svg>
+              TIKTOK
+            </button>
           </div>
         </div>
 
@@ -74,6 +91,7 @@ const App: React.FC = () => {
           )} */}
           {active === 'batch' && <BatchPage />}
           {active === 'history' && <HistoryTab />}
+          {active === 'tiktok' && <TiktokTab />}
         </div>
       </div>
     </div>
