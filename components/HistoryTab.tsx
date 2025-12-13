@@ -1,7 +1,8 @@
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchVeoImages } from '../services/dbService';
 import { createClient } from '@supabase/supabase-js';
-import { ensureValidMediaUrl } from '../services/apiService';
+import { ensureValidMediaUrl, isUrlExpired } from '../services/apiService';
 import { updateVeoVideoUrl } from '../services/dbService';
 
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -28,18 +29,14 @@ export default function HistoryTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
   // Hàm resolve URL hợp lệ cho ảnh/video, chỉ tạo 1 lần
+
+
   const resolveImageUrl = useCallback(async (img, googleToken, supabase) => {
     let url = img.file_url;
     let expired = false;
     if (!url) expired = true;
     else {
-      try {
-        const head = await fetch(url, { method: 'HEAD' });
-        if (!head.ok && head.status !== 304) expired = true;
-      } catch {
-        // Nếu bị CORS hoặc network error, coi như KHÔNG hết hạn
-        expired = true;
-      }
+      expired = await isUrlExpired(url);
     }
     if (expired) {
       url = await ensureValidMediaUrl({
@@ -55,17 +52,13 @@ export default function HistoryTab() {
     return { ...img, file_url: url };
   }, []);
 
+
   const resolveVideoUrl = useCallback(async (task, googleToken) => {
     let url = task.video_url;
     let expired = false;
     if (!url) expired = true;
     else {
-      try {
-        const head = await fetch(url, { method: 'HEAD' });
-        if (!head.ok && head.status !== 304) expired = true;
-      } catch {
-        expired = true;
-      }
+      expired = await isUrlExpired(url);
     }
     if (expired) {
       url = await ensureValidMediaUrl({

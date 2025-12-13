@@ -620,6 +620,18 @@ export const pollVeoVideoStatus = async (
 };
 
 // --- EXPORT HÀM KIỂM TRA LINK HẾT HẠN ---
+
+export async function isUrlExpired(url: string): Promise<boolean> {
+  let res;
+  try {
+    res = await fetch(url, { method: 'HEAD' });
+    return false;
+  } catch (e) {
+    console.log('isUrlExpired fetch error:', e);
+    return false;
+  }
+}
+
 export async function ensureValidMediaUrl({
   type,
   mediaId,
@@ -637,30 +649,6 @@ export async function ensureValidMediaUrl({
   sceneId?: string;
   updateDb: (newUrl: string, statusInfo?: { status?: string; error?: { code?: number; message?: string } }) => Promise<void>;
 }): Promise<string> {
-
-async function isUrlExpired(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, { method: 'HEAD' });
-    console.log(`isUrlExpired HEAD ${url} => ${res.status}`);
-    // Chỉ 200 và 304 là hợp lệ, còn lại (>=400) thì coi là hết hạn
-    if (res.status === 200 || res.status === 304) return false;
-    if (res.status >= 400) return true;
-    // Các mã khác (1xx, 3xx khác) coi như hợp lệ
-    return false;
-  } catch (e) {
-    console.log('isUrlExpired fetch error:', e);
-    // Nếu fetch ném lỗi nhưng có response/status thì vẫn check status code
-    if (e && typeof e === 'object' && 'status' in e) {
-      const status = e.status;
-      if (status === 200 || status === 304) return false;
-      if (status >= 400) return true;
-      return false;
-    }
-    // Nếu không có status (pure CORS/network error), coi như KHÔNG hết hạn
-    return true;
-  }
-}
-
   // Nếu URL ban đầu là null, bỏ qua kiểm tra và lấy URL mới
   if (!url) {
     console.warn('URL is null, attempting to fetch a new URL...');
