@@ -20,7 +20,7 @@ export async function fetchUrlToDataUrl(url: string): Promise<string> {
     throw new Error('URL không hợp lệ');
   }
   try {
-    const localProxyUrl = url.replace('https://storage.googleapis.com', '/api/storage');
+    const localProxyUrl = url.replace('https://storage.googleapis.com/ai-sandbox-videofx/image', '/ai-sandbox-videofx/image');
     const response = await axios.get(localProxyUrl, { responseType: 'blob' });
     return await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -622,13 +622,18 @@ export const pollVeoVideoStatus = async (
 // --- EXPORT HÀM KIỂM TRA LINK HẾT HẠN ---
 
 export async function isUrlExpired(url: string): Promise<boolean> {
-  let res;
   try {
-    res = await fetch(url, { method: 'HEAD' });
+    if (!url || typeof url !== 'string') return false;
+    // Luôn dùng proxy giống fetchUrlToDataUrl
+    const localProxyUrl = url.replace('https://storage.googleapis.com/ai-sandbox-videofx', '/ai-sandbox-videofx');
+    console.log('isUrlExpired checking URL via proxy:', localProxyUrl);
+    const res = await fetch(localProxyUrl, { method: 'GET' });
+    if (res.status === 200 || res.status === 304) return false;
+    if (res.status >= 400) return true;
     return false;
   } catch (e) {
     console.log('isUrlExpired fetch error:', e);
-    return false;
+    return true;
   }
 }
 

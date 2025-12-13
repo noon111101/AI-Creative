@@ -18,15 +18,12 @@ export default defineConfig({
           });
         }
       },
-      '/api/storage': {
+      '/ai-sandbox-videofx': {
         target: 'https://storage.googleapis.com',
         changeOrigin: true,
         secure: true,
         configure: (proxy, _options) => {
           proxy.on('proxyReq', (proxyReq, req, _res) => {
-            // Spoof Origin and Referer
-            proxyReq.setHeader('origin', 'https://labs.google');
-            proxyReq.setHeader('referer', 'https://labs.google/');
           });
         }
       },

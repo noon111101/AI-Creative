@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/api/storage/:match*",
-      "destination": "https://storage.googleapis.com/:match*"
+      "source": "/ai-sandbox-videofx/:match*",
+      "destination": "https://storage.googleapis.com/ai-sandbox-videofx/:match*"
     },
     {
       "source": "/v1:uploadUserImage",
