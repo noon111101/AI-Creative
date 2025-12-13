@@ -22,6 +22,8 @@ export default function BatchInputTable() {
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<string[]>([]);
   const [veoImages, setVeoImages] = useState<DbVeoImageRecord[]>([]);
+  const [allVeoImages, setAllVeoImages] = useState<DbVeoImageRecord[]>([]);
+  const [showImagePicker, setShowImagePicker] = useState(false);
   const [showPaste, setShowPaste] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
@@ -96,11 +98,17 @@ export default function BatchInputTable() {
 
 
   useEffect(() => {
-    fetchVeoImages().then(data => {
-      console.log('fetchVeoImages result:', data);
+    // Fetch only 8 reference images for main table, order by created_at desc
+    fetchVeoImages({ type: 'reference', limit: 8, order: 'created_at.desc' }).then(data => {
       setVeoImages(data);
     });
   }, []);
+
+  // Fetch all reference images for fullscreen picker
+  const fetchAllVeoImages = async () => {
+    const all = await fetchVeoImages({ type: 'reference' });
+    setAllVeoImages(all);
+  };
 
   const handleChange = (idx: number, field: keyof BatchRow, value: any) => {
     const newRows = [...rows];
@@ -389,7 +397,7 @@ export default function BatchInputTable() {
                     </td>
                     <td className="px-4 py-2 align-middle">
                       <div className="flex flex-wrap gap-2">
-                        {veoImages.filter(img => img.type === 'reference').map(img => {
+                        {veoImages.map(img => {
                           const checked = row.referenceImageId.split(',').includes(img.media_generation_id);
                           return (
                             <label key={img.media_generation_id} className="relative cursor-pointer">
@@ -418,7 +426,7 @@ export default function BatchInputTable() {
                                   const newUrl = await ensureValidMediaUrl({
                                     type: 'image',
                                     mediaId: img.media_generation_id,
-                                    url: img.file_url || '', // Nếu null, vẫn gọi để fetch URL mới
+                                    url: img.file_url || '',
                                     googleToken,
                                     updateDb: async (newUrl) => {
                                       const { createClient } = await import('@supabase/supabase-js');
@@ -433,6 +441,51 @@ export default function BatchInputTable() {
                             </label>
                           );
                         })}
+                        <button type="button" className="ml-2 px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-semibold border border-blue-300 hover:bg-blue-200" onClick={async () => { setShowImagePicker(true); await fetchAllVeoImages(); }}>Chọn nhiều hơn...</button>
+                            {/* Fullscreen Image Picker Modal */}
+                            {showImagePicker && (
+                              <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center">
+                                <div className="bg-white rounded-xl shadow-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto relative">
+                                  <button className="absolute top-4 right-4 text-2xl text-gray-500 hover:text-gray-800" onClick={() => setShowImagePicker(false)}>&times;</button>
+                                  <h3 className="text-xl font-bold mb-4 text-brand-700">Chọn ảnh tham chiếu (tất cả)</h3>
+                                  <div className="flex flex-wrap gap-4">
+                                    {allVeoImages.map(img => {
+                                      const checked = rows[0].referenceImageId.split(',').includes(img.media_generation_id); // Chỉ cho dòng đầu tiên, có thể mở rộng
+                                      return (
+                                        <label key={img.media_generation_id} className="relative cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={e => {
+                                              const ids = rows[0].referenceImageId ? rows[0].referenceImageId.split(',').filter(Boolean) : [];
+                                              let newIds;
+                                              if (e.target.checked) {
+                                                newIds = [...ids, img.media_generation_id];
+                                              } else {
+                                                newIds = ids.filter(id => id !== img.media_generation_id);
+                                              }
+                                              // Chỉ update cho dòng đầu tiên, có thể mở rộng cho nhiều dòng nếu cần
+                                              handleChange(0, 'referenceImageId', newIds.join(','));
+                                            }}
+                                            className="absolute top-1 left-1 z-10 w-4 h-4"
+                                          />
+                                          <img
+                                            src={img.file_url || ''}
+                                            alt={img.file_name || img.media_generation_id}
+                                            className={`w-24 h-24 object-cover rounded-lg border ${checked ? 'border-blue-600 ring-2 ring-blue-400' : 'border-gray-300'}`}
+                                            style={{ filter: checked ? 'brightness(0.85)' : 'none' }}
+                                          />
+                                          <span className="block text-xs text-center mt-1 max-w-[96px] truncate">{img.file_name || img.media_generation_id}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="mt-6 flex justify-end">
+                                    <button className="px-6 py-2 rounded-lg bg-brand-600 text-white font-semibold shadow hover:bg-brand-700 transition" onClick={() => setShowImagePicker(false)}>Xong</button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                       </div>
                     </td>
                     <td className="px-4 py-2 align-middle">

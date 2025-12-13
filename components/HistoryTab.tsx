@@ -1,189 +1,114 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { fetchVeoImages } from '../services/dbService';
 import { createClient } from '@supabase/supabase-js';
 import { ensureValidMediaUrl } from '../services/apiService';
+import { updateVeoVideoUrl } from '../services/dbService';
 
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 export default function HistoryTab() {
   const [activeTab, setActiveTab] = useState<'images' | 'aiImages' | 'videoTasks'>('images');
+  const [pageImages, setPageImages] = useState(1);
   const [pageAiImages, setPageAiImages] = useState(1);
+  const [pageVideoTasks, setPageVideoTasks] = useState(1);
+  const pageSize = 8;
+  const [totalImages, setTotalImages] = useState(0);
   const [totalAiImages, setTotalAiImages] = useState(0);
-  const [veoAiImages, setVeoAiImages] = useState([]);
+  const [totalVideoTasks, setTotalVideoTasks] = useState(0);
   const [veoImages, setVeoImages] = useState([]);
+  const [veoAiImages, setVeoAiImages] = useState([]);
   const [veoVideoTasks, setVeoVideoTasks] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [pageImages, setPageImages] = useState(1);
-  const [pageImageTasks, setPageImageTasks] = useState(1);
-  const [pageVideoTasks, setPageVideoTasks] = useState(1);
-  const [pageSize] = useState(8);
-  const [totalImages, setTotalImages] = useState(0);
-  const [totalImageTasks, setTotalImageTasks] = useState(0);
-  const [totalVideoTasks, setTotalVideoTasks] = useState(0);
 
   // Reset page khi chuyển tab sang aiImages, chỉ khi page hiện tại khác 1
   useEffect(() => {
-    if (activeTab === 'aiImages' && pageAiImages !== 1) {
-      setPageAiImages(1);
-    }
-    // Không fetch dữ liệu ở đây
-    // Việc fetch sẽ do useEffect bên dưới đảm nhiệm
-    // Điều này tránh việc fetch nhầm page khi vừa chuyển tab
-    // ...
-    // Nếu chuyển sang tab khác, không cần reset page
+    if (activeTab === 'aiImages' && pageAiImages !== 1) setPageAiImages(1);
+    if (activeTab === 'images' && pageImages !== 1) setPageImages(1);
+    if (activeTab === 'videoTasks' && pageVideoTasks !== 1) setPageVideoTasks(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+  // Hàm resolve URL hợp lệ cho ảnh/video, chỉ tạo 1 lần
+  const resolveImageUrl = useCallback(async (img, googleToken, supabase) => {
+    let url = img.file_url;
+    let expired = false;
+    if (!url) expired = true;
+    else {
+      try {
+        const head = await fetch(url, { method: 'HEAD' });
+        if (!head.ok && head.status !== 304) expired = true;
+      } catch {
+        // Nếu bị CORS hoặc network error, coi như KHÔNG hết hạn
+        expired = true;
+      }
+    }
+    if (expired) {
+      url = await ensureValidMediaUrl({
+        type: 'image',
+        mediaId: img.media_generation_id,
+        url: url || '',
+        googleToken,
+        updateDb: async (newUrl) => {
+          await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', img.media_generation_id);
+        },
+      });
+    }
+    return { ...img, file_url: url };
+  }, []);
 
-  // Chỉ fetch dữ liệu của tab đang active
+  const resolveVideoUrl = useCallback(async (task, googleToken) => {
+    let url = task.video_url;
+    let expired = false;
+    if (!url) expired = true;
+    else {
+      try {
+        const head = await fetch(url, { method: 'HEAD' });
+        if (!head.ok && head.status !== 304) expired = true;
+      } catch {
+        expired = true;
+      }
+    }
+    if (expired) {
+      url = await ensureValidMediaUrl({
+        type: 'video',
+        operationName: task.operation_name,
+        sceneId: task.scene_id,
+        url: url || '',
+        googleToken,
+        updateDb: async (newUrl) => {
+          await updateVeoVideoUrl(task.operation_name, newUrl);
+        },
+      });
+    }
+    return { ...task, video_url: url };
+  }, []);
+
+  // Chỉ fetch dữ liệu của tab đang active, chỉ set state sau khi resolve xong URL hợp lệ
   useEffect(() => {
+    let isMounted = true;
     async function fetchTabData() {
       setLoading(true);
       const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
       if (activeTab === 'images') {
-        // ... giữ nguyên logic tab images ...
+        const res = await supabase.from('veo_images').select('*', { count: 'exact' }).eq('type', 'reference').order('created_at', { ascending: false }).range((pageImages-1)*pageSize, pageImages*pageSize-1);
+        setTotalImages(res.count || 0);
+        const checked = await Promise.all((res.data || []).map(img => resolveImageUrl(img, googleToken, supabase)));
+        if (isMounted) setVeoImages(checked);
       } else if (activeTab === 'aiImages') {
-        // Chỉ fetch khi pageAiImages === 1 hoặc khi không vừa chuyển tab
-        if (activeTab === 'aiImages' && pageAiImages === 1) {
-          const aiImagesRes = await supabase.from('veo_images').select('*', { count: 'exact' }).eq('type', 'ai').order('created_at', { ascending: false }).range(0, pageSize-1);
-          const total = aiImagesRes.count || 0;
-          setTotalAiImages(total);
-          const veoAiImagesChecked = await Promise.all((aiImagesRes.data || []).filter(img => img.type === 'ai').map(async img => {
-            if (!img.file_url) {
-              const newUrl = await ensureValidMediaUrl({
-                type: 'image',
-                mediaId: img.media_generation_id,
-                url: '',
-                googleToken,
-                updateDb: async (newUrl) => {
-                  await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', img.media_generation_id);
-                },
-              });
-              return { ...img, file_url: newUrl };
-            } else {
-              try {
-                const res = await fetch(img.file_url, { method: 'HEAD' });
-                if (!res.ok) {
-                  const newUrl = await ensureValidMediaUrl({
-                    type: 'image',
-                    mediaId: img.media_generation_id,
-                    url: img.file_url,
-                    googleToken,
-                    updateDb: async (newUrl) => {
-                      await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', img.media_generation_id);
-                    },
-                  });
-                  return { ...img, file_url: newUrl };
-                }
-              } catch {}
-            }
-            return img;
-          }));
-          setVeoAiImages(veoAiImagesChecked);
-        } else if (activeTab === 'aiImages') {
-          const aiImagesRes = await supabase.from('veo_images').select('*', { count: 'exact' }).eq('type', 'ai').order('created_at', { ascending: false }).range((pageAiImages-1)*pageSize, pageAiImages*pageSize-1);
-          const total = aiImagesRes.count || 0;
-          setTotalAiImages(total);
-          const totalPages = Math.max(Math.ceil(total / pageSize), 1);
-          if (pageAiImages > totalPages) {
-            setPageAiImages(totalPages);
-            setLoading(false);
-            return;
-          }
-          const veoAiImagesChecked = await Promise.all((aiImagesRes.data || []).filter(img => img.type === 'ai').map(async img => {
-            if (!img.file_url) {
-              const newUrl = await ensureValidMediaUrl({
-                type: 'image',
-                mediaId: img.media_generation_id,
-                url: '',
-                googleToken,
-                updateDb: async (newUrl) => {
-                  await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', img.media_generation_id);
-                },
-              });
-              return { ...img, file_url: newUrl };
-            } else {
-              try {
-                const res = await fetch(img.file_url, { method: 'HEAD' });
-                if (!res.ok) {
-                  const newUrl = await ensureValidMediaUrl({
-                    type: 'image',
-                    mediaId: img.media_generation_id,
-                    url: img.file_url,
-                    googleToken,
-                    updateDb: async (newUrl) => {
-                      await supabase.from('veo_images').update({ file_url: newUrl }).eq('media_generation_id', img.media_generation_id);
-                    },
-                  });
-                  return { ...img, file_url: newUrl };
-                }
-              } catch {}
-            }
-            return img;
-          }));
-          setVeoAiImages(veoAiImagesChecked);
-        }
+        const res = await supabase.from('veo_images').select('*', { count: 'exact' }).eq('type', 'ai').order('created_at', { ascending: false }).range((pageAiImages-1)*pageSize, pageAiImages*pageSize-1);
+        setTotalAiImages(res.count || 0);
+        const checked = await Promise.all((res.data || []).map(img => resolveImageUrl(img, googleToken, supabase)));
+        if (isMounted) setVeoAiImages(checked);
       } else if (activeTab === 'videoTasks') {
-        // Fetch and display immediately
-        const videoTasksRes = await supabase.from('veo_video_tasks').select('*', { count: 'exact' }).order('created_at', { ascending: false }).range((pageVideoTasks-1)*pageSize, pageVideoTasks*pageSize-1);
-        setTotalVideoTasks(videoTasksRes.count || 0);
-        setVeoVideoTasks(videoTasksRes.data || []);
-        // Background update for video_url if needed (do not poll if FAILED)
-        (videoTasksRes.data || []).forEach(async (task) => {
-          if (task.status === 'MEDIA_GENERATION_STATUS_FAILED') return; // Do not poll or update
-          let updatedTask = { ...task };
-          const updateDb = async (newUrl, statusInfo) => {
-            if (statusInfo?.status === 'MEDIA_GENERATION_STATUS_FAILED') {
-              await supabase.from('veo_video_tasks')
-                .upsert([{ operation_name: task.operation_name, status: statusInfo.status, error_message: statusInfo.error?.message || null }], { onConflict: 'operation_name' });
-              updatedTask = { ...updatedTask, status: statusInfo.status, error_message: statusInfo.error?.message || null };
-            }
-            await supabase.from('veo_video_tasks')
-              .upsert([{ operation_name: task.operation_name, video_url: newUrl }], { onConflict: 'operation_name' });
-            updatedTask = { ...updatedTask, video_url: newUrl };
-          };
-          if (task.status === 'MEDIA_GENERATION_STATUS_ACTIVE') {
-            try {
-              const { pollVeoVideoStatus } = await import('../services/apiService');
-              const videoUrl = await pollVeoVideoStatus(task.operation_name, task.scene_id, googleToken);
-              if (videoUrl) {
-                await supabase.from('veo_video_tasks')
-                  .upsert([{ operation_name: task.operation_name, video_url: videoUrl, status: 'MEDIA_GENERATION_STATUS_SUCCESSFUL' }], { onConflict: 'operation_name' });
-                // Optionally update UI state here if you want to reflect new video_url immediately
-              }
-            } catch (err) {
-              // Nếu poll lỗi thì giữ nguyên trạng thái
-            }
-          } else if (!task.video_url) {
-            const newUrl = await ensureValidMediaUrl({
-              type: 'video',
-              operationName: task.operation_name,
-              sceneId: task.scene_id,
-              url: '',
-              googleToken,
-              updateDb,
-            });
-            // Optionally update UI state here if you want to reflect new video_url immediately
-          } else {
-            try {
-              const res = await fetch(task.video_url, { method: 'HEAD' });
-              if (!res.ok) {
-                const newUrl = await ensureValidMediaUrl({
-                  type: 'video',
-                  operationName: task.operation_name,
-                  sceneId: task.scene_id,
-                  url: task.video_url,
-                  googleToken,
-                  updateDb,
-                });
-                // Optionally update UI state here if you want to reflect new video_url immediately
-              }
-            } catch {}
-          }
-        });
+        const res = await supabase.from('veo_video_tasks').select('*', { count: 'exact' }).order('created_at', { ascending: false }).range((pageVideoTasks-1)*pageSize, pageVideoTasks*pageSize-1);
+        setTotalVideoTasks(res.count || 0);
+        const checked = await Promise.all((res.data || []).map(task => resolveVideoUrl(task, googleToken)));
+        if (isMounted) setVeoVideoTasks(checked);
       }
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
     fetchTabData();
-  }, [activeTab, pageImages, pageImageTasks, pageVideoTasks, pageSize]);
+    return () => { isMounted = false; };
+  }, [activeTab, pageImages, pageAiImages, pageVideoTasks, resolveImageUrl, resolveVideoUrl]);
 
   // Phân trang riêng cho từng bảng
   const totalPagesImages = Math.max(Math.ceil(totalImages / pageSize), 1);

@@ -1,3 +1,17 @@
+// Hàm cập nhật video_url cho veo_video_tasks bằng supabase-js client
+import { getSupabaseClient } from './supabaseClient';
+export async function updateVeoVideoUrl(operationName, videoUrl) {
+  const supabase = getSupabaseClient();
+  console.log("Updating Veo video URL in DB:", operationName, videoUrl);
+  console.log("Supabase client:", supabase);
+  if (!supabase) return;
+  const { data, error } = await supabase
+    .from('veo_video_tasks')
+    .update({ video_url: videoUrl })
+    .eq('operation_name', operationName);
+  if (error) throw error;
+  return data;
+}
 /**
  * Lưu kết quả tạo ảnh từ Veo3 vào bảng veo_images (type 'ai')
  */
@@ -27,13 +41,28 @@ export const logVeoImageTaskToDb = async (
 /**
  * Fetches all veo_images from Supabase for use as reference images
  */
-export const fetchVeoImages = async (): Promise<DbVeoImageRecord[]> => {
+/**
+ * Fetch veo_images with optional filter, limit, and order
+ * @param params { type?: string, limit?: number, order?: string }
+ */
+export const fetchVeoImages = async (params?: { type?: string; limit?: number; order?: string }): Promise<DbVeoImageRecord[]> => {
   const supabase = getSupabaseClient();
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from('veo_images')
-    .select('*')
-    .order('created_at', { ascending: false });
+  let query = supabase.from('veo_images').select('*');
+  if (params?.type) {
+    query = query.eq('type', params.type);
+  }
+  if (params?.order) {
+    // order: 'created_at.desc' or 'created_at.asc'
+    const [col, dir] = params.order.split('.');
+    query = query.order(col, { ascending: dir !== 'desc' });
+  } else {
+    query = query.order('created_at', { ascending: false });
+  }
+  if (params?.limit) {
+    query = query.limit(params.limit);
+  }
+  const { data, error } = await query;
   if (error) {
     console.error('Error fetching veo_images:', error);
     return [];
@@ -41,7 +70,6 @@ export const fetchVeoImages = async (): Promise<DbVeoImageRecord[]> => {
   return data as DbVeoImageRecord[];
 };
 
-import { getSupabaseClient } from './supabaseClient';
 import { DbTaskRecord, DbUploadRecord, ProcessedTask, UploadResponse, DbVeoImageRecord, DbVeoVideoRecord } from '../types';
 
 /**

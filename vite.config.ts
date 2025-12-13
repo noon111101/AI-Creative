@@ -20,9 +20,15 @@ export default defineConfig({
       },
       '/api/storage': {
         target: 'https://storage.googleapis.com',
-        changeOrigin: true, // Quan trọng: Đổi Origin thành target
-        rewrite: (path) => path.replace(/^\/api\/storage/, ''),
-        secure: false, // Dùng cho HTTPS
+        changeOrigin: true,
+        secure: true,
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            // Spoof Origin and Referer
+            proxyReq.setHeader('origin', 'https://labs.google');
+            proxyReq.setHeader('referer', 'https://labs.google/');
+          });
+        }
       },
     }
   }

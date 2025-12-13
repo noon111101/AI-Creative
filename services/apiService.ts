@@ -15,24 +15,30 @@ export interface Veo3GenerateImageRequest {
 }
 
 
-export async function fetchUrlToDataUrl(url) {
-    try {
-        const localProxyUrl = url.replace('https://storage.googleapis.com', '/api/storage');
-        const response = await axios.get(localProxyUrl, { responseType: 'blob' }); // Đổi sang blob
-        
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64Only = reader.result.split(',')[1];
-                resolve(base64Only);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(response.data);
-        });
-    } catch (error) {
-        console.error("Lỗi khi fetch URL sang Base64:", error.message);
-        throw new Error("Lỗi fetch client-side: Không thể tải ảnh để chuyển đổi Base64.");
-    }
+export async function fetchUrlToDataUrl(url: string): Promise<string> {
+  if (!url || typeof url !== 'string') {
+    throw new Error('URL không hợp lệ');
+  }
+  try {
+    const localProxyUrl = url.replace('https://storage.googleapis.com', '/api/storage');
+    const response = await axios.get(localProxyUrl, { responseType: 'blob' });
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          const base64Only = reader.result.split(',')[1];
+          resolve(base64Only);
+        } else {
+          reject(new Error('Không đọc được blob sang data URL.'));
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(response.data);
+    });
+  } catch (error: any) {
+    console.error("Lỗi khi fetch URL sang Base64:", error?.message || error);
+    throw new Error("Lỗi fetch client-side: Không thể tải ảnh để chuyển đổi Base64.");
+  }
 }
 /**
  * Generate Veo3 image (batchGenerateImages) with standardized payload
@@ -631,14 +637,29 @@ export async function ensureValidMediaUrl({
   sceneId?: string;
   updateDb: (newUrl: string, statusInfo?: { status?: string; error?: { code?: number; message?: string } }) => Promise<void>;
 }): Promise<string> {
-  async function isUrlExpired(url: string): Promise<boolean> {
-    try {
-      const res = await fetch(url, { method: 'HEAD' });
-      return !res.ok;
-    } catch {
-      return true;
+
+async function isUrlExpired(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    console.log(`isUrlExpired HEAD ${url} => ${res.status}`);
+    // Chỉ 200 và 304 là hợp lệ, còn lại (>=400) thì coi là hết hạn
+    if (res.status === 200 || res.status === 304) return false;
+    if (res.status >= 400) return true;
+    // Các mã khác (1xx, 3xx khác) coi như hợp lệ
+    return false;
+  } catch (e) {
+    console.log('isUrlExpired fetch error:', e);
+    // Nếu fetch ném lỗi nhưng có response/status thì vẫn check status code
+    if (e && typeof e === 'object' && 'status' in e) {
+      const status = e.status;
+      if (status === 200 || status === 304) return false;
+      if (status >= 400) return true;
+      return false;
     }
+    // Nếu không có status (pure CORS/network error), coi như KHÔNG hết hạn
+    return true;
   }
+}
 
   // Nếu URL ban đầu là null, bỏ qua kiểm tra và lấy URL mới
   if (!url) {
