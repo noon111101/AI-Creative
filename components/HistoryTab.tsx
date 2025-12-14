@@ -179,43 +179,56 @@ export default function HistoryTab() {
                     )}
                     <div className="text-xs font-bold mb-1">Scene: {task.scene_id}</div>
                     <div className="text-xs text-gray-500 mb-2">Status: {task.status}</div>
-                    {/* Nếu status FAILED, hiển thị nút thử lại */}
-                    {task.status === 'MEDIA_GENERATION_STATUS_FAILED' && (
+                    <div className="flex gap-2 mt-2">
+                      {/* Nếu status FAILED, hiển thị nút thử lại */}
+                      {task.status === 'MEDIA_GENERATION_STATUS_FAILED' && (
+                        <button
+                          className="px-3 py-1 rounded bg-red-600 text-white text-xs font-semibold shadow hover:bg-red-700 transition"
+                          onClick={async () => {
+                            // Lấy lại cấu hình từ DB
+                            const videoPrompt = task.video_prompt || '';
+                            const mediaId = task.media_id || '';
+                            const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
+                            if (!videoPrompt || !mediaId) {
+                              alert('Không đủ thông tin để tạo lại video!');
+                              return;
+                            }
+                            // Gọi lại API tạo video
+                            const { startVeoVideoGeneration } = await import('../services/apiService');
+                            try {
+                              const videoRes = await startVeoVideoGeneration(videoPrompt, mediaId, googleToken);
+                              // Lưu lại task mới vào DB
+                              await supabase.from('veo_video_tasks').upsert([
+                                {
+                                  operation_name: videoRes.operationName,
+                                  scene_id: videoRes.sceneId,
+                                  status: 'MEDIA_GENERATION_STATUS_ACTIVE',
+                                  video_url: null,
+                                  video_prompt: videoPrompt,
+                                  media_id: mediaId
+                                }
+                              ], { onConflict: 'operation_name' });
+                              // Xoá bản ghi lỗi cũ
+                              await supabase.from('veo_video_tasks').delete().eq('operation_name', task.operation_name);
+                              alert('Đã gửi lại yêu cầu tạo video!');
+                            } catch (err) {
+                              alert('Lỗi tạo lại video: ' + (err?.message || err));
+                            }
+                          }}
+                        >Thử lại tạo video</button>
+                      )}
+                      {/* Nút xoá bản ghi video */}
                       <button
-                        className="mt-2 px-3 py-1 rounded bg-red-600 text-white text-xs font-semibold shadow hover:bg-red-700 transition"
+                        className="px-3 py-1 rounded bg-gray-400 text-white text-xs font-semibold shadow hover:bg-gray-600 transition"
                         onClick={async () => {
-                          // Lấy lại cấu hình từ DB
-                          const videoPrompt = task.video_prompt || '';
-                          const mediaId = task.media_id || '';
-                          const googleToken = import.meta.env.VITE_GOOGLE_LABS_TOKEN;
-                          if (!videoPrompt || !mediaId) {
-                            alert('Không đủ thông tin để tạo lại video!');
-                            return;
-                          }
-                          // Gọi lại API tạo video
-                          const { startVeoVideoGeneration } = await import('../services/apiService');
-                          try {
-                            const videoRes = await startVeoVideoGeneration(videoPrompt, mediaId, googleToken);
-                            // Lưu lại task mới vào DB
-                            await supabase.from('veo_video_tasks').upsert([
-                              {
-                                operation_name: videoRes.operationName,
-                                scene_id: videoRes.sceneId,
-                                status: 'MEDIA_GENERATION_STATUS_ACTIVE',
-                                video_url: null,
-                                video_prompt: videoPrompt,
-                                media_id: mediaId
-                              }
-                            ], { onConflict: 'operation_name' });
-                            // Xoá bản ghi lỗi cũ
+                          if (window.confirm('Bạn có chắc muốn xoá bản ghi video này?')) {
                             await supabase.from('veo_video_tasks').delete().eq('operation_name', task.operation_name);
-                            alert('Đã gửi lại yêu cầu tạo video!');
-                          } catch (err) {
-                            alert('Lỗi tạo lại video: ' + (err?.message || err));
+                            // Refresh lại danh sách
+                            setVeoVideoTasks(tasks => tasks.filter(t => t.operation_name !== task.operation_name));
                           }
                         }}
-                      >Thử lại tạo video</button>
-                    )}
+                      >Xoá</button>
+                    </div>
                   </div>
                 ))}
               </div>
