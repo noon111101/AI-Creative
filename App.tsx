@@ -5,17 +5,18 @@ import StoryboardEditor from './components/StoryboardEditor';
 import BatchPage from './components/BatchPage';
 import HistoryTab from './components/HistoryTab';
 import TiktokTab from './components/TiktokTab';
+import { ToastProvider } from './components/ToastProvider';
 
 const App: React.FC = () => {
   const [active, setActive] = useState<'batch' | 'history' | 'tiktok'>('batch');
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-10 px-4 sm:px-6 lg:px-8 font-sans">
+    <ToastProvider>
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-10 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-5xl mx-auto">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold text-gray-900">Interface Selector</h1>
-            <p className="text-sm text-gray-500">Choose SORA (classic) or FLOW (new) — Flow is coming soon.</p>
           </div>
 
           <div className="inline-flex items-center rounded-lg bg-white shadow-sm p-1.5 border border-gray-100">
@@ -95,6 +96,7 @@ const App: React.FC = () => {
         </div>
       </div>
     </div>
+    </ToastProvider>
   );
 };
 

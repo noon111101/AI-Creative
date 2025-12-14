@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { uploadImageToGoogleLabs, startVeoVideoGeneration, pollVeoVideoStatus } from '../services/apiService';
+import { updateTiktokTaskVideoInfo } from '../services/dbService';
 import { ApiTokens, DbUploadRecord, DbTaskRecord } from '../types';
 import { useToast } from './ToastProvider';
 
@@ -24,7 +25,7 @@ const convertImageToJpegBase64 = (src: string): Promise<string> => {
       try {
         const canvas = document.createElement('canvas');
         // Ensure even dimensions to be safe (though not strictly required for upload, good for video)
-        canvas.width = img.width; 
+        canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
@@ -34,9 +35,9 @@ const convertImageToJpegBase64 = (src: string): Promise<string> => {
         // White background in case of transparent PNGs
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         ctx.drawImage(img, 0, 0);
-        
+
         // Export as JPEG with high quality
         const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
         resolve(dataUrl);
@@ -52,25 +53,25 @@ const convertImageToJpegBase64 = (src: string): Promise<string> => {
   });
 };
 
-export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  imageUrl, 
-  tokens 
-  , sourceUpload, sourceTask
+export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({
+  isOpen,
+  onClose,
+  imageUrl,
+  tokens,
+  sourceUpload, sourceTask
 }) => {
   const [prompt, setPrompt] = useState("A cinematic video...");
   const [status, setStatus] = useState<'idle' | 'uploading' | 'generating' | 'polling' | 'completed' | 'failed'>('idle');
   const [statusMsg, setStatusMsg] = useState('');
   const [resultVideoUrl, setResultVideoUrl] = useState('');
-  
+  const { addToast } = useToast();
   // Reset state when opening new image
   useEffect(() => {
     if (isOpen) {
-        setStatus('idle');
-        setStatusMsg('');
-        setResultVideoUrl('');
-        setPrompt("A high-definition 8K cinematic video... (describe movement)");
+      setStatus('idle');
+      setStatusMsg('');
+      setResultVideoUrl('');
+      setPrompt("A high-definition 8K cinematic video... (describe movement)");
     }
   }, [isOpen, imageUrl]);
 
@@ -78,163 +79,170 @@ export const VideoGenerationModal: React.FC<VideoGenerationModalProps> = ({
 
   const handleGenerate = async () => {
     if (!tokens.googleToken) {
-        setStatus('failed');
-        setStatusMsg('Missing Google Labs Token in .env (VITE_GOOGLE_LABS_TOKEN).');
-        return;
+      setStatus('failed');
+      setStatusMsg('Missing Google Labs Token in .env (VITE_GOOGLE_LABS_TOKEN).');
+      return;
     }
 
     try {
-        // 1. Process Image
-        setStatus('uploading');
-        setStatusMsg('Processing image (converting to JPEG)...');
-        
-        const { addToast } = useToast();
+      // 1. Process Image
+      setStatus('uploading');
+      setStatusMsg('Processing image (converting to JPEG)...');
 
-        let mediaId: string | null = null;
 
-        // If caller provided an existing media ID on either the upload or task record, reuse it.
-        if (sourceUpload?.media_id_video) {
-          mediaId = sourceUpload.media_id_video;
-        } else if (sourceTask?.media_id_video) {
-          mediaId = sourceTask.media_id_video;
-        } else {
-          // If we only have an image URL, try a best-effort DB lookup to find a matching upload record
-          try {
-            const { findMediaIdByFileUrl } = await import('../services/dbService');
-            const found = await findMediaIdByFileUrl(imageUrl);
-                if (found) {
-                  mediaId = found;
-                }
-          } catch (e) {
-            // ignore lookup failures and continue to upload path
-            console.warn('Failed to lookup media_id_video by file URL:', e);
-          }
-        }
+      // Luôn dùng image_media_id từ tiktok_task để tạo video
+      const mediaId: string | null = sourceTask?.image_media_id || null;
+      if (!mediaId) {
+        setStatus('failed');
+        setStatusMsg('Không tìm thấy image_media_id trong task.');
+        addToast('Không tìm thấy image_media_id trong task.', 'error');
+        return;
+      }
+      setStatusMsg('Using existing Veo media ID...');
+      addToast('Using existing Veo media ID', 'info');
 
-        // If no existing mediaId, convert + upload
-        if (!mediaId) {
-              addToast('Uploading image to Veo3...', 'info');
-          // Convert the image to a standardized JPEG Base64 string
-          // This handles format conversion and ensures valid base64 for the API
-          const jpegBase64 = await convertImageToJpegBase64(imageUrl);
+      // 2. Start Generation
+      setStatus('generating');
+      setStatusMsg('Initializing video generation task...');
+      addToast('Starting video generation...', 'info');
+      const { operationName, sceneId } = await startVeoVideoGeneration(prompt, mediaId, tokens.googleToken,
+        { aspectRatio: "VIDEO_ASPECT_RATIO_PORTRAIT", videoModelKey: "veo_3_1_i2v_s_fast_portrait_ultra" });
 
-          setStatusMsg('Uploading to Veo3...');
-          // Upload (always as image/jpeg)
-              try {
-                mediaId = await uploadImageToGoogleLabs(jpegBase64, tokens.googleToken, sourceUpload?.file_name, sourceUpload?.file_id);
-                addToast('Image uploaded to Veo3', 'success');
-              } catch (err: any) {
-                console.error('Upload failed:', err);
-                addToast('Image upload failed', 'error');
-                throw err;
-              }
-        } else {
-              setStatusMsg('Using existing Veo media ID, skipping upload...');
-              addToast('Using existing Veo media ID, skipping upload', 'info');
-        }
-        
-        // 2. Start Generation
-        setStatus('generating');
-        setStatusMsg('Initializing video generation task...');
-        addToast('Starting video generation...', 'info');
-        const { operationName, sceneId } = await startVeoVideoGeneration(prompt, mediaId, tokens.googleToken);
-
-        // 3. Poll
-        setStatus('polling');
-        const videoUrl = await pollVeoVideoStatus(
-            operationName, 
-            sceneId, 
-            tokens.googleToken, 
-            (msg) => setStatusMsg(msg)
+      // 3. Poll
+      setStatus('polling');
+      let videoRespone: any = null;
+      let videoUrl: string | null = null;
+      let mediaGenerationId: string | null = null;
+      try {
+        videoUrl = await pollVeoVideoStatus(
+          operationName,
+          sceneId,
+          tokens.googleToken,
+          (msg) => setStatusMsg(msg)
         );
+        // Lấy mediaGenerationId từ operationName hoặc sceneId (tùy backend trả về)
+        mediaGenerationId = mediaId;
         if (videoUrl) {
-          addToast('Video generation complete', 'success');
-        } else {
-          addToast('Video generation completed (no URL returned)', 'warning');
+          videoRespone = {
+            fifeUrl: videoUrl,
+            mediaGenerationId: mediaGenerationId
+          };
         }
-
-        setResultVideoUrl(videoUrl);
+        addToast('Video generation complete', 'success');
+        setResultVideoUrl(videoUrl || '');
         setStatus('completed');
+      } catch (e) {
+        // Nếu lỗi (ví dụ FAILED), dừng polling, báo lỗi rõ ràng
+        videoRespone = { error: e?.message || e };
+        setStatus('failed');
+        setStatusMsg(e?.message || 'Video generation failed');
+        addToast('Video generation failed', 'error');
+        return;
+      }
+
+      // Lưu video_config và video_respone vào tiktok_task (dạng mảng)
+      if (sourceTask?.image_media_id) {
+        // Lấy video_config và video_respone cũ nếu có
+        let oldConfigArr = [];
+        let oldRespArr = [];
+        try {
+          if (sourceTask.video_config) {
+            const parsed = typeof sourceTask.video_config === 'string' ? JSON.parse(sourceTask.video_config) : sourceTask.video_config;
+            if (Array.isArray(parsed)) oldConfigArr = parsed;
+            else if (parsed) oldConfigArr = [parsed];
+          }
+          if (sourceTask.video_respone) {
+            const parsed = typeof sourceTask.video_respone === 'string' ? JSON.parse(sourceTask.video_respone) : sourceTask.video_respone;
+            if (Array.isArray(parsed)) oldRespArr = parsed;
+            else if (parsed) oldRespArr = [parsed];
+          }
+        } catch {}
+        const videoConfig = {
+          prompt,
+          mediaId,
+          operationName,
+          sceneId
+        };
+        const newConfigArr = [...oldConfigArr, videoConfig];
+        const newRespArr = [...oldRespArr, videoRespone];
+        await updateTiktokTaskVideoInfo(sourceTask.image_media_id, newConfigArr, newRespArr);
+      }
 
     } catch (e: any) {
-        console.error("Video Gen Error:", e);
-        setStatus('failed');
-        setStatusMsg(e.message || "Unknown error occurred");
+      console.error("Video Gen Error:", e);
+      setStatus('failed');
+      setStatusMsg(e.message || "Unknown error occurred");
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
       <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        
+
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose} aria-hidden="true"></div>
 
         <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
         <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
-          <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+          <div className="bg-white px-6 pt-6 pb-4 sm:p-8 sm:pb-6">
             <div className="sm:flex sm:items-start">
               <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                <h3 className="text-2xl leading-7 font-bold text-black mb-4" id="modal-title">
                   Generate Video with Veo3
                 </h3>
-                
-                <div className="mt-4 flex justify-center mb-4 bg-gray-100 rounded p-2">
-                    <img src={imageUrl} alt="Source" className="h-32 object-contain" />
+                <div className="mt-4 flex justify-center mb-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <img src={imageUrl} alt="Source" className="h-40 object-contain rounded shadow" />
                 </div>
-
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-base font-semibold text-black mb-2">
                     Prompt
                   </label>
                   <textarea
                     rows={4}
-                    className="shadow-sm focus:ring-brand-500 focus:border-brand-500 block w-full sm:text-sm border-gray-300 rounded-md border p-2"
-                    placeholder="Describe the video..."
+                    className="shadow focus:ring-blue-400 focus:border-blue-400 block w-full text-base border border-gray-300 rounded-lg p-3 text-black bg-white placeholder-gray-400"
+                    placeholder="Mô tả chuyển động, phong cách, thời lượng..."
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     disabled={status !== 'idle' && status !== 'failed' && status !== 'completed'}
                   />
                 </div>
-
                 {/* Status / Result Area */}
                 <div className="mt-4">
-                    {status === 'uploading' && <p className="text-blue-600 text-sm animate-pulse">{statusMsg}</p>}
-                    {status === 'generating' && <p className="text-purple-600 text-sm animate-pulse">{statusMsg}</p>}
-                    {status === 'polling' && <p className="text-indigo-600 text-sm animate-pulse">{statusMsg}</p>}
-                    {status === 'failed' && <p className="text-red-600 text-sm font-medium">Error: {statusMsg}</p>}
-                    
-                    {status === 'completed' && resultVideoUrl && (
-                        <div className="mt-2">
-                            <p className="text-green-600 font-bold mb-2">Generation Complete!</p>
-                            <video controls className="w-full rounded-lg shadow bg-black" src={resultVideoUrl} />
-                            <a 
-                                href={resultVideoUrl} 
-                                target="_blank" 
-                                rel="noreferrer" 
-                                className="block text-center mt-2 text-brand-600 text-xs hover:underline"
-                            >
-                                Open Video in New Tab
-                            </a>
-                        </div>
-                    )}
+                  {status === 'uploading' && <p className="text-blue-700 text-base animate-pulse">{statusMsg}</p>}
+                  {status === 'generating' && <p className="text-purple-700 text-base animate-pulse">{statusMsg}</p>}
+                  {status === 'polling' && <p className="text-indigo-700 text-base animate-pulse">{statusMsg}</p>}
+                  {status === 'failed' && <p className="text-red-600 text-base font-semibold">Lỗi: {statusMsg}</p>}
+                  {status === 'completed' && resultVideoUrl && (
+                    <div className="mt-2">
+                      <p className="text-green-700 font-bold mb-2">Tạo video thành công!</p>
+                      <video controls className="w-full rounded-lg shadow bg-black" src={resultVideoUrl} />
+                      <a
+                        href={resultVideoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block text-center mt-2 text-blue-700 text-sm hover:underline"
+                      >
+                        Xem video ở tab mới
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
-          <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+          <div className="bg-white px-4 py-4 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-200">
             {(status === 'idle' || status === 'failed') && (
-                <button
+              <button
                 type="button"
-                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-brand-600 text-base font-medium text-white hover:bg-brand-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm"
+                className="w-full inline-flex justify-center rounded-lg border border-transparent shadow px-5 py-2 bg-blue-600 text-base font-bold text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-base transition"
                 onClick={handleGenerate}
-                >
+              >
                 Generate Video
-                </button>
+              </button>
             )}
             <button
               type="button"
-              className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              className="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 shadow px-5 py-2 bg-white text-base font-bold text-gray-800 hover:bg-gray-100 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-base transition"
               onClick={onClose}
             >
               Close

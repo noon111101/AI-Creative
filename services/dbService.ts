@@ -1,3 +1,138 @@
+// Cập nhật video_config và video_respone cho tiktok_task theo image_media_id
+export const updateTiktokTaskVideoInfo = async (
+  imageMediaId: string,
+  videoConfig: any,
+  videoRespone: any
+) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  const { error } = await supabase
+    .from('tiktok_task')
+    .update({
+      video_config: videoConfig ? JSON.stringify(videoConfig) : null,
+      video_respone: videoRespone ? JSON.stringify(videoRespone) : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('image_media_id', imageMediaId);
+  if (error) {
+    console.error('❌ Error updating tiktok_task video info:', error);
+  } else {
+    console.log('✅ Updated tiktok_task video info for', imageMediaId);
+  }
+};
+/**
+ * Normalize and save media API response to tiktok_task table.
+ * Optionally supports saving a reference image URL.
+ * @param mediaApiResponse The API response object (see screenshot)
+ * @param referenceImageUrl (optional) Reference image URL to associate with the task
+ */
+export const saveTiktokTaskFromMedia = async (
+  mediaApiResponse: any,
+  referenceImageUrl?: string
+) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  // Defensive: handle array or object
+  const mediaArr = Array.isArray(mediaApiResponse.media)
+    ? mediaApiResponse.media
+    : [mediaApiResponse.media];
+
+  for (const media of mediaArr) {
+    const image = media.image?.generatedImage;
+    if (!image) continue;
+    // Chuẩn hóa trường cho schema mới
+    const prompt = image.requestData?.promptInputs?.[0]?.textInput || image.prompt || '';
+    const modelMediaId = (image.requestData?.imageGenerationRequestData?.imageGenerationImageInputs?.[0]?.mediaGenerationId) || null;
+    const imageFileUrl = image.fifeUrl || null;
+    const imageMediaId = image.mediaGenerationId || null;
+    // outfit_media_id sẽ được truyền vào hàm này khi tạo ảnh với outfit, mặc định null nếu chưa có
+    // video_config, video_respone sẽ được cập nhật sau khi tạo video, mặc định null
+    const now = new Date().toISOString();
+    const record = {
+      prompt,
+      model_media_id: modelMediaId,
+      image_file_url: imageFileUrl,
+      outfit_media_id: referenceImageUrl || null, // tạm dùng referenceImageUrl làm outfit_media_id nếu truyền vào
+      video_config: null,
+      video_respone: null,
+      created_at: now,
+      updated_at: now,
+      image_media_id: imageMediaId,
+    };
+    const { error } = await supabase.from('tiktok_task').insert([record]);
+    if (error) {
+      console.error('❌ Error saving tiktok_task from media:', error, record);
+    } else {
+      console.log('✅ Saved tiktok_task from media:', record);
+    }
+  }
+};
+// Lấy danh sách người mẫu từ bảng tiktok_models
+export const fetchTiktokModels = async (): Promise<any[]> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('tiktok_models').select('*').order('created_at', { ascending: false });
+  if (error) {
+    console.error('Error fetching tiktok_models:', error);
+    return [];
+  }
+  return data || [];
+};
+// Lấy danh sách task TikTok theo type
+export const fetchTiktokTasks = async (): Promise<any[]> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('tiktok_task')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error('Error fetching tiktok_task:', error);
+    return [];
+  }
+  return data || [];
+};
+
+// Lưu người mẫu vào bảng tiktok_models
+export const logTiktokModelToDb = async (model: {
+  name: string,
+  media_id: string,
+  file_url?: string,
+}) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  const { error } = await supabase.from('tiktok_models').insert([model]);
+  if (error) {
+    console.error('❌ Error saving tiktok model to DB:', error);
+  } else {
+    console.log('✅ Tiktok model saved to DB:', model);
+  }
+};
+// Ghi task TikTok vào bảng tiktok_task
+export const logTiktokTaskToDb = async (task: {
+  type: string,
+  prompt?: string,
+  traits?: string,
+  model_media_id?: string,
+  model_file_url?: string,
+  outfit_media_id?: string,
+  outfit_file_url?: string,
+  result_media_id?: string,
+  result_file_url?: string,
+  video_url?: string,
+  status?: string,
+  error_message?: string,
+}) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  const { error } = await supabase.from('tiktok_task').insert([task]);
+  if (error) {
+    console.error('❌ Error saving tiktok task to DB:', error);
+  } else {
+    console.log('✅ Tiktok task saved to DB:', task);
+  }
+};
 // Hàm cập nhật video_url cho veo_video_tasks bằng supabase-js client
 import { getSupabaseClient } from './supabaseClient';
 export async function updateVeoVideoUrl(operationName, videoUrl) {

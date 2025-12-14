@@ -50,6 +50,7 @@ export const generateVeo3Image = async (
   {
     prompt,
     referenceImageId,
+    imageInputs,
     sessionId = ';' + Date.now(),
     seed = Math.floor(Math.random() * 1000000),
     imageModelName = 'GEM_PIX_2',
@@ -57,6 +58,7 @@ export const generateVeo3Image = async (
   }: {
     prompt: string;
     referenceImageId?: string;
+    imageInputs?: Array<{ name: string; imageInputType: 'IMAGE_INPUT_TYPE_REFERENCE' }>;
     sessionId?: string;
     seed?: number;
     imageModelName?: string;
@@ -64,6 +66,12 @@ export const generateVeo3Image = async (
   },
   googleToken: string
 ): Promise<any> => {
+  let finalImageInputs = imageInputs;
+  if (!finalImageInputs) {
+    finalImageInputs = referenceImageId
+      ? [{ name: referenceImageId, imageInputType: 'IMAGE_INPUT_TYPE_REFERENCE' }]
+      : [];
+  }
   const payload: Veo3GenerateImageRequest = {
     clientContext: {
       sessionId,
@@ -72,12 +80,7 @@ export const generateVeo3Image = async (
     imageModelName,
     imageAspectRatio,
     prompt,
-    imageInputs: referenceImageId
-      ? [{
-          name: referenceImageId,
-          imageInputType: "IMAGE_INPUT_TYPE_REFERENCE",
-        }]
-      : [],
+    imageInputs: finalImageInputs,
   };
 
   const response = await fetch(GOOGLE_GEN_IMAGE_URL, {
@@ -330,7 +333,7 @@ export const uploadImageToGoogleLabs = async (
   googleToken: string,
   originalFileName?: string,
   originalFileId?: string,
-  type?: 'reference' | 'ai' | 'flow'
+  type?: 'reference' | 'ai' | 'flow' | 'tiktok_model_reference' | 'tiktok_outfit_reference'
 ): Promise<string> => {
   // Ensure we have raw base64 (remove data:image/jpeg;base64, prefix if present)
   const rawBase64 = jpegBase64.includes(',') ? jpegBase64.split(',')[1] : jpegBase64;
@@ -400,30 +403,45 @@ export const uploadImageToGoogleLabs = async (
 /**
  * Starts the Veo3 video generation task
  */
+/**
+ * Starts the Veo3 video generation task
+ * @param prompt string
+ * @param googleMediaId string
+ * @param googleToken string
+ * @param options Optional: { aspectRatio, videoModelKey }
+ *   - aspectRatio: 'VIDEO_ASPECT_RATIO_LANDSCAPE' | 'VIDEO_ASPECT_RATIO_PORTRAIT' | ...
+ *   - videoModelKey: string (e.g. 'veo_3_1_i2v_s_fast')
+ * Defaults: aspectRatio = 'VIDEO_ASPECT_RATIO_LANDSCAPE', videoModelKey = 'veo_3_1_i2v_s_fast'
+ * @returns { operationName, sceneId }
+ */
 export const startVeoVideoGeneration = async (
-  prompt: string, 
-  googleMediaId: string, 
-  googleToken: string
+  prompt: string,
+  googleMediaId: string,
+  googleToken: string,
+  options?: {
+    aspectRatio?: string;
+    videoModelKey?: string;
+  }
 ): Promise<{ operationName: string, sceneId: string }> => {
-  
   const sceneId = crypto.randomUUID();
-
+  const aspectRatio = options?.aspectRatio || "VIDEO_ASPECT_RATIO_LANDSCAPE";
+  const videoModelKey = options?.videoModelKey || "veo_3_1_i2v_s_fast";
   const payload = {
     clientContext: {
-        sessionId: `;${Date.now()}`,
-        projectId: "89ce78f2-876e-4c07-ae58-f2226d1ac578", // Fixed ID from example
-        tool: "PINHOLE",
-        userPaygateTier: "PAYGATE_TIER_ONE"
+      sessionId: `;${Date.now()}`,
+      projectId: "89ce78f2-876e-4c07-ae58-f2226d1ac578",
+      tool: "PINHOLE",
+      userPaygateTier: "PAYGATE_TIER_ONE"
     },
     requests: [
-        {
-            aspectRatio: "VIDEO_ASPECT_RATIO_LANDSCAPE",
-            seed: Math.floor(Math.random() * 100000), // Random seed
-            textInput: { prompt: prompt },
-            videoModelKey: "veo_3_1_i2v_s_fast",
-            startImage: { mediaId: googleMediaId },
-            metadata: { sceneId: sceneId }
-        }
+      {
+        aspectRatio,
+        seed: Math.floor(Math.random() * 100000),
+        textInput: { prompt },
+        videoModelKey,
+        startImage: { mediaId: googleMediaId },
+        metadata: { sceneId }
+      }
     ]
   };
 
@@ -443,9 +461,6 @@ export const startVeoVideoGeneration = async (
   }
 
   const data = await response.json();
-  // Handle multiple response shapes:
-  // Legacy: data.responses[0].operation.name
-  // New: data.operations[0].operation.name and data.operations[0].sceneId
   const opName = data?.responses?.[0]?.operation?.name || data?.operations?.[0]?.operation?.name;
   const returnedSceneId = data?.operations?.[0]?.sceneId || sceneId;
 
@@ -453,7 +468,6 @@ export const startVeoVideoGeneration = async (
     throw new Error("No operation name returned for video gen");
   }
 
-  // Best-effort: persist the start response to DB (veo_video_tasks)
   try {
     await logVeoVideoTaskToDb(opName, returnedSceneId, data?.operations?.[0]?.status || null, data);
   } catch (e) {
@@ -578,14 +592,17 @@ export const pollVeoVideoStatus = async (
 
     const data = await response.json();
     const resultOp = data?.operations?.[0];
-    
-    // Check for done
-    // Success structure typically has `response` with `videoResult`
-    // Persist status for this operation (best-effort)
+
     try {
       const opName = resultOp?.operation?.name || operationName;
       const opSceneId = resultOp?.sceneId || sceneId;
       const opStatus = resultOp?.status || (resultOp?.done ? 'MEDIA_GENERATION_STATUS_DONE' : null);
+
+      // Nếu status là FAILED thì dừng polling và báo lỗi
+      if (opStatus === 'MEDIA_GENERATION_STATUS_FAILED') {
+        await upsertVeoVideoTask(opName, opSceneId, opStatus, resultOp, null, null);
+        throw new Error('Video generation failed (MEDIA_GENERATION_STATUS_FAILED)');
+      }
 
       // If status indicates success, extract video URL(s) and serving/preview URI
       let extractedUrl: string | null = null;
@@ -614,7 +631,6 @@ export const pollVeoVideoStatus = async (
       console.warn('Failed to upsert veo video task status:', e);
     }
   }
-  
 
   throw new Error("Polling timed out for video generation");
 };
@@ -626,13 +642,11 @@ export async function isUrlExpired(url: string): Promise<boolean> {
     if (!url || typeof url !== 'string') return false;
     // Luôn dùng proxy giống fetchUrlToDataUrl
     const localProxyUrl = url.replace('https://storage.googleapis.com/ai-sandbox-videofx', '/ai-sandbox-videofx');
-    console.log('isUrlExpired checking URL via proxy:', localProxyUrl);
     const res = await fetch(localProxyUrl, { method: 'GET' });
     if (res.status === 200 || res.status === 304) return false;
     if (res.status >= 400) return true;
     return false;
   } catch (e) {
-    console.log('isUrlExpired fetch error:', e);
     return true;
   }
 }
